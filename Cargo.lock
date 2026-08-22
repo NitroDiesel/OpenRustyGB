@@ -86,6 +86,7 @@ dependencies = [
  "openrustygb-driver-gamesir-nova-lite-2",
  "openrustygb-driver-hyperx-pulsefire-haste2",
  "openrustygb-driver-lexip-np93-alpha",
+ "openrustygb-driver-madcatz-cyborg-light",
  "openrustygb-driver-n5312a-mouse",
  "openrustygb-driver-nvidia-esa-xps-730x",
  "openrustygb-driver-patriot-viper-v550",
@@ -134,6 +135,14 @@ dependencies = [
 
 [[package]]
 name = "openrustygb-driver-lexip-np93-alpha"
+version = "0.0.1"
+dependencies = [
+ "openrustygb-domain",
+ "openrustygb-driver-api",
+]
+
+[[package]]
+name = "openrustygb-driver-madcatz-cyborg-light"
 version = "0.0.1"
 dependencies = [
  "openrustygb-domain",

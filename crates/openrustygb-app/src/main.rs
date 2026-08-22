@@ -26,6 +26,11 @@ use openrustygb_driver_lexip_np93_alpha::{
     DirectColorTransaction as LexipColorTransaction, MATCH as LEXIP_MATCH,
     OUTPUT_REPORT_LEN as LEXIP_REPORT_LEN, matches as matches_lexip,
 };
+use openrustygb_driver_madcatz_cyborg_light::{
+    DirectColorTransaction as MadCatzColorTransaction, EnableTransaction as MadCatzEnable,
+    IntensityTransaction as MadCatzIntensity, MATCH as MADCATZ_MATCH,
+    OPEN_REPORT_LEN as MADCATZ_REPORT_LEN, matches as matches_madcatz,
+};
 use openrustygb_driver_n5312a_mouse::{
     ColorTransaction as N5312ColorTransaction, FEATURE_REPORT_LEN as N5312_REPORT_LEN,
     Initialization as N5312Initialization, InvalidModeSettings, MATCH as N5312_MATCH,
@@ -51,6 +56,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         [command] if command == "probe-dream-cheeky" => probe_dream(),
         [command] if command == "probe-gamesir" => probe_gamesir(),
         [command] if command == "probe-lexip" => probe_lexip(),
+        [command] if command == "probe-madcatz" => probe_madcatz(),
         [command] if command == "probe-n5312" => probe_n5312(),
         [command] if command == "probe-nvidia-esa" => probe_nvidia_esa(),
         [command] if command == "probe-viper-v550" => probe_viper(),
@@ -78,6 +84,14 @@ fn main() -> Result<(), Box<dyn Error>> {
             if command == "set-lexip-color" && confirmation == "--confirm-reversible-write" =>
         {
             set_lexip_color(parse_rgb(color)?)
+        }
+        [command, confirmation, color, brightness]
+            if command == "set-madcatz-color" && confirmation == "--confirm-reversible-write" =>
+        {
+            set_madcatz_color(
+                parse_rgb(color)?,
+                parse_u8_decimal(brightness, "brightness")?,
+            )
         }
         [command, confirmation, color]
             if command == "set-viper-v550-color"
@@ -111,6 +125,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                 "Usage:\n  openrustygb probe-haste2\n  openrustygb probe-dream-cheeky\n  \
                  openrustygb probe-gamesir\n  \
                  openrustygb probe-lexip\n  \
+                 openrustygb probe-madcatz\n  \
                  openrustygb probe-n5312\n  \
                  openrustygb probe-nvidia-esa\n  \
                  openrustygb probe-viper-v550\n  \
@@ -119,6 +134,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                  openrustygb set-dream-cheeky-color --confirm-reversible-write RRGGBB\n  \
                  openrustygb set-gamesir-color --confirm-reversible-write RRGGBB\n  \
                  openrustygb set-lexip-color --confirm-reversible-write RRGGBB\n  \
+                 openrustygb set-madcatz-color --confirm-reversible-write RRGGBB <brightness>\n  \
                  openrustygb set-viper-v550-color --confirm-reversible-write RRGGBB\n  \
                  openrustygb set-nvidia-esa-color --confirm-reversible-write RRGGBB\n  \
                  openrustygb set-n5312-mode --confirm-reversible-write \
@@ -129,6 +145,30 @@ fn main() -> Result<(), Box<dyn Error>> {
             Ok(())
         }
     }
+}
+
+fn probe_madcatz() -> Result<(), Box<dyn Error>> {
+    let endpoints = HidInventory::enumerate()?;
+    let exact: Vec<_> = endpoints
+        .iter()
+        .filter(|endpoint| matches_madcatz(endpoint))
+        .collect();
+    if exact.is_empty() {
+        println!("No MadCatz Cyborg Gaming Light endpoint found.");
+    } else {
+        for endpoint in exact {
+            println!(
+                "Found MadCatz Cyborg endpoint: {:04X}:{:04X}, interface {}, usage {:04X}:{:04X}",
+                endpoint.vendor_id,
+                endpoint.product_id,
+                endpoint.interface_number,
+                endpoint.usage_page,
+                endpoint.usage
+            );
+        }
+    }
+    println!("Probe completed without opening a device or writing a report.");
+    Ok(())
 }
 
 fn probe_nvidia_esa() -> Result<(), Box<dyn Error>> {
@@ -438,6 +478,37 @@ fn set_lexip_color(color: Rgb8) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+fn set_madcatz_color(color: Rgb8, brightness: u8) -> Result<(), Box<dyn Error>> {
+    let endpoints = HidInventory::enumerate()?;
+    let mut exact = endpoints.into_iter().filter(matches_madcatz);
+    let endpoint = exact
+        .next()
+        .ok_or("MadCatz Cyborg Gaming Light endpoint not found")?;
+    if exact.next().is_some() {
+        return Err("more than one MadCatz Cyborg endpoint found; refusing to choose".into());
+    }
+
+    let mut output = HidOutput::<MADCATZ_REPORT_LEN>::open_matching(&endpoint, MADCATZ_MATCH)?;
+    MadCatzEnable::new().apply(&mut output)?;
+    MadCatzIntensity::new(brightness).apply(&mut output)?;
+    let target = ControllerRef {
+        id: ControllerId::new(NonZeroU64::new(8).expect("eight is non-zero")),
+        incarnation: Incarnation::new(NonZeroU32::new(1).expect("one is non-zero")),
+    };
+    let actor = ControllerActor::start(target, MadCatzBackend { output }, 4)?;
+    let outcome = actor.submit_whole_color(target, color)?.wait()?;
+    actor.shutdown()?;
+    match outcome {
+        CommandOutcome::Applied { .. } => {}
+        CommandOutcome::Failed { error, .. } => return Err(error.into()),
+        CommandOutcome::Superseded { .. } => {
+            return Err("one-shot color command was unexpectedly superseded".into());
+        }
+    }
+    println!("Applied one reversible MadCatz Cyborg color transaction.");
+    Ok(())
+}
+
 fn set_n5312_mode(
     mode: N5312Mode,
     color: Rgb8,
@@ -692,6 +763,28 @@ impl ControllerBackend for LexipBackend {
             .map_err(LexipBackendError::Serialization)?
             .apply(&mut self.output)
             .map_err(LexipBackendError::Output)
+    }
+
+    fn apply_barrier(&mut self, barrier: Self::Barrier) -> Result<(), Self::Error> {
+        match barrier {}
+    }
+
+    fn shutdown(&mut self) -> Result<(), Self::Error> {
+        Ok(())
+    }
+}
+
+#[derive(Debug)]
+struct MadCatzBackend {
+    output: HidOutput<MADCATZ_REPORT_LEN>,
+}
+
+impl ControllerBackend for MadCatzBackend {
+    type Barrier = std::convert::Infallible;
+    type Error = HidTransportError;
+
+    fn apply_whole_color(&mut self, color: Rgb8) -> Result<(), Self::Error> {
+        MadCatzColorTransaction::new(color).apply(&mut self.output)
     }
 
     fn apply_barrier(&mut self, barrier: Self::Barrier) -> Result<(), Self::Error> {

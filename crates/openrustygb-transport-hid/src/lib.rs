@@ -114,20 +114,20 @@ impl<const N: usize> HidOutput<N> {
     }
 }
 
-impl<const N: usize> FeatureWriter<N> for HidOutput<N> {
+impl<const OPEN_N: usize, const REPORT_N: usize> FeatureWriter<REPORT_N> for HidOutput<OPEN_N> {
     type Error = HidTransportError;
 
-    fn send_feature_report(&mut self, report: &OutputReport<N>) -> Result<(), Self::Error> {
+    fn send_feature_report(&mut self, report: &OutputReport<REPORT_N>) -> Result<(), Self::Error> {
         self.device
             .send_feature_report(report.as_bytes())
             .map_err(Into::into)
     }
 }
 
-impl<const N: usize> OutputWriter<N> for HidOutput<N> {
+impl<const OPEN_N: usize, const REPORT_N: usize> OutputWriter<REPORT_N> for HidOutput<OPEN_N> {
     type Error = HidTransportError;
 
-    fn write_output(&mut self, report: &OutputReport<N>) -> Result<usize, Self::Error> {
+    fn write_output(&mut self, report: &OutputReport<REPORT_N>) -> Result<usize, Self::Error> {
         self.device.write(report.as_bytes()).map_err(Into::into)
     }
 }

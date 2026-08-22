@@ -13,6 +13,7 @@ members = [
     "crates/drivers/patriot-viper-v550",
     "crates/drivers/dream-cheeky-webmail-notifier",
     "crates/drivers/nvidia-esa-xps-730x",
+    "crates/drivers/madcatz-cyborg-light",
     "crates/openrustygb-app",
     "xtask",
 ]

@@ -106,3 +106,17 @@ device completes its live test.
 Physical NVIDIA ESA hardware was not present for this contraction. The family
 remains release-blocked by the global hardware-evidence policy until a matching
 device completes its live test.
+
+## MadCatzCyborgController
+
+- Rust package: `openrustygb-driver-madcatz-cyborg-light`
+- Device: MadCatz Cyborg Gaming Light
+- Match: VID `06A3`, PID `0DC5`; the native detector accepts any interface and usage
+- Preserved model: accessory with Direct mode value `0`, brightness `0..100`, one Cyborg zone, and one LED
+- Preserved output: feature reports `A1 00` to enable, `A6 00 II` for clamped intensity, and `A2 00 RR GG BB 00 00 00 00` for color
+- Verification: flexible-match test, mixed-size packet and ordering golden, brightness clamp boundaries, model-shape test, executable read-only probe, workspace Clippy and tests
+- Deleted native files: `MadCatzCyborgController.cpp`, `MadCatzCyborgController.h`, `MadCatzCyborgControllerDetect.cpp`, `RGBController_MadCatzCyborg.cpp`, `RGBController_MadCatzCyborg.h`
+
+Physical MadCatz hardware was not present for this contraction. The family
+remains release-blocked by the global hardware-evidence policy until a matching
+device completes its live test.
