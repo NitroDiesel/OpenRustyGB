@@ -92,3 +92,17 @@ device completes its live test.
 Physical Dream Cheeky hardware was not present for this contraction. The family
 remains release-blocked by the global hardware-evidence policy until a matching
 device completes its live test.
+
+## NvidiaESAController
+
+- Rust package: `openrustygb-driver-nvidia-esa-xps-730x`
+- Device: NVIDIA ESA lighting in the Dell XPS 730x
+- Match: VID `0955`, PID `000A`, usage page `FFDE`, usage `0002`; the native detector accepts any interface
+- Preserved model: case with Static mode value `0`, five single-LED zones named Front Drive Bays, Front USB, Rear, Internal, and Front Audio
+- Preserved output: commands `42..46` followed by inverted 4-bit RGB channels, one 4-byte output report per zone
+- Verification: flexible-match tests, inverse-channel boundaries, zone packet golden, five-command ordering, short-write rejection, model-shape test, executable read-only probe, workspace Clippy and tests
+- Deleted native files: `NvidiaESAController.cpp`, `NvidiaESAController.h`, `NvidiaESAControllerDetect.cpp`, `RGBController_NvidiaESA.cpp`, `RGBController_NvidiaESA.h`
+
+Physical NVIDIA ESA hardware was not present for this contraction. The family
+remains release-blocked by the global hardware-evidence policy until a matching
+device completes its live test.

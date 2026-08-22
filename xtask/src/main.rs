@@ -13,6 +13,7 @@ const PORTED_FAMILIES: &[(&str, &str)] = &[
     ("FaustusController", "faustus-keyboard"),
     ("LexipMouseController", "lexip-np93-alpha"),
     ("N5312AController", "n5312a-mouse"),
+    ("NvidiaESAController", "nvidia-esa-xps-730x"),
     ("PatriotViperMouseController", "patriot-viper-v550"),
 ];
 const PORTED_DETECTOR_SOURCES: &[&str] = &[
@@ -20,6 +21,7 @@ const PORTED_DETECTOR_SOURCES: &[&str] = &[
     "Controllers/GameSirController/GameSirControllerDetect.cpp",
     "Controllers/LexipMouseController/LexipMouseControllerDetect.cpp",
     "Controllers/N5312AController/N5312AControllerDetect.cpp",
+    "Controllers/NvidiaESAController/NvidiaESAControllerDetect.cpp",
     "Controllers/PatriotViperMouseController/PatriotViperMouseControllerDetect.cpp",
 ];
 

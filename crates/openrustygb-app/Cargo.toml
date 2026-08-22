@@ -15,6 +15,7 @@ openrustygb-driver-gamesir-nova-lite-2 = { path = "../drivers/gamesir-nova-lite-
 openrustygb-driver-hyperx-pulsefire-haste2 = { path = "../drivers/hyperx-pulsefire-haste2" }
 openrustygb-driver-lexip-np93-alpha = { path = "../drivers/lexip-np93-alpha" }
 openrustygb-driver-n5312a-mouse = { path = "../drivers/n5312a-mouse" }
+openrustygb-driver-nvidia-esa-xps-730x = { path = "../drivers/nvidia-esa-xps-730x" }
 openrustygb-driver-patriot-viper-v550 = { path = "../drivers/patriot-viper-v550" }
 openrustygb-runtime = { path = "../openrustygb-runtime" }
 openrustygb-transport-hid = { path = "../openrustygb-transport-hid" }
