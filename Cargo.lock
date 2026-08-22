@@ -81,6 +81,7 @@ version = "0.0.1"
 dependencies = [
  "openrustygb-domain",
  "openrustygb-driver-api",
+ "openrustygb-driver-gamesir-nova-lite-2",
  "openrustygb-driver-hyperx-pulsefire-haste2",
  "openrustygb-runtime",
  "openrustygb-transport-hid",
@@ -93,6 +94,14 @@ version = "0.0.1"
 [[package]]
 name = "openrustygb-driver-api"
 version = "0.0.1"
+
+[[package]]
+name = "openrustygb-driver-gamesir-nova-lite-2"
+version = "0.0.1"
+dependencies = [
+ "openrustygb-domain",
+ "openrustygb-driver-api",
+]
 
 [[package]]
 name = "openrustygb-driver-hyperx-pulsefire-haste2"

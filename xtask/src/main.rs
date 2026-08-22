@@ -7,6 +7,9 @@ use std::path::{Path, PathBuf};
 
 const PINNED_CONTROLLER_FAMILIES: usize = 197;
 const PINNED_DETECTOR_SOURCES: usize = 224;
+const PORTED_FAMILIES: &[(&str, &str)] = &[("GameSirController", "gamesir-nova-lite-2")];
+const PORTED_DETECTOR_SOURCES: &[&str] =
+    &["Controllers/GameSirController/GameSirControllerDetect.cpp"];
 
 fn main() -> Result<(), Box<dyn Error>> {
     let arguments: Vec<String> = env::args().skip(1).collect();
@@ -35,40 +38,72 @@ fn inventory(require_parity: bool) -> Result<(), Box<dyn Error>> {
     let detector_sources = detector_sources(&controllers)?;
     let rust_drivers = rust_driver_packages(&root.join("crates").join("drivers"))?;
 
-    if families.len() != PINNED_CONTROLLER_FAMILIES {
+    if families.len() + PORTED_FAMILIES.len() != PINNED_CONTROLLER_FAMILIES {
         return Err(format!(
-            "pinned family inventory drifted: expected {PINNED_CONTROLLER_FAMILIES}, found {}",
-            families.len()
+            "pinned family inventory drifted: expected {PINNED_CONTROLLER_FAMILIES}, found {} native plus {} ported",
+            families.len(),
+            PORTED_FAMILIES.len()
         )
         .into());
     }
-    if detector_sources.len() != PINNED_DETECTOR_SOURCES {
+    if detector_sources.len() + PORTED_DETECTOR_SOURCES.len() != PINNED_DETECTOR_SOURCES {
         return Err(format!(
-            "pinned detector-source inventory drifted: expected {PINNED_DETECTOR_SOURCES}, found {}",
-            detector_sources.len()
+            "pinned detector-source inventory drifted: expected {PINNED_DETECTOR_SOURCES}, found {} native plus {} ported",
+            detector_sources.len(),
+            PORTED_DETECTOR_SOURCES.len()
         )
         .into());
     }
 
-    println!("Pinned upstream controller families: {}", families.len());
+    for (native_family, rust_package) in PORTED_FAMILIES {
+        if controllers.join(native_family).exists() {
+            return Err(format!(
+                "ported family {native_family} still has a native source directory"
+            )
+            .into());
+        }
+        if !root
+            .join("crates")
+            .join("drivers")
+            .join(rust_package)
+            .join("Cargo.toml")
+            .is_file()
+        {
+            return Err(format!(
+                "ported family {native_family} is missing Rust package {rust_package}"
+            )
+            .into());
+        }
+    }
+
+    println!("Pinned upstream controller families: {PINNED_CONTROLLER_FAMILIES}");
     println!(
-        "Pinned upstream detector source files: {}",
+        "Native controller-family directories remaining: {}",
+        families.len()
+    );
+    println!(
+        "Contracted Rust controller families: {}",
+        PORTED_FAMILIES.len()
+    );
+    println!("Pinned upstream detector source files: {PINNED_DETECTOR_SOURCES}");
+    println!(
+        "Native detector source files remaining: {}",
         detector_sources.len()
     );
     println!(
         "Rust driver packages currently present: {}",
         rust_drivers.len()
     );
-    let progress_tenths = rust_drivers.len() * 1_000 / families.len();
+    let progress_tenths = PORTED_FAMILIES.len() * 1_000 / PINNED_CONTROLLER_FAMILIES;
     println!(
         "Family-package progress: {}/{} ({}.{:01}%)",
-        rust_drivers.len(),
-        families.len(),
+        PORTED_FAMILIES.len(),
+        PINNED_CONTROLLER_FAMILIES,
         progress_tenths / 10,
         progress_tenths % 10
     );
 
-    if require_parity && rust_drivers.len() < families.len() {
+    if require_parity && PORTED_FAMILIES.len() < PINNED_CONTROLLER_FAMILIES {
         return Err("driver parity gate is not complete; release remains blocked".into());
     }
     Ok(())

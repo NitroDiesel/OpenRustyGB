@@ -2,7 +2,7 @@
 
 OpenRustyGB is an in-progress, all-Rust reimplementation of OpenRGB, pinned to
 upstream commit `8121ee29f46d58f90a56348eb5bf7a64f52f923b`. The repository currently
-contains the verified Rust foundation and its first hardware vertical slice.
+contains the verified Rust foundation and its initial hardware slices.
 It is not yet a feature-parity replacement.
 
 The original C++/Qt source remains in the tree as a migration reference while

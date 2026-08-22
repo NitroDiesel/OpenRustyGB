@@ -6,6 +6,7 @@ members = [
     "crates/openrustygb-runtime",
     "crates/openrustygb-transport-hid",
     "crates/drivers/hyperx-pulsefire-haste2",
+    "crates/drivers/gamesir-nova-lite-2",
     "crates/openrustygb-app",
     "xtask",
 ]

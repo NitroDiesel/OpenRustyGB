@@ -78,7 +78,9 @@ pub fn description() -> ControllerDescription {
     ControllerDescription {
         name: "HyperX Pulsefire Haste 2".into(),
         vendor: "HyperX".into(),
+        description: "HyperX Pulsefire Haste 2 Mouse".into(),
         device_type: DeviceType::Mouse,
+        modes: Vec::new(),
         zone_names: vec!["Scroll Wheel".into()],
         led_names: vec!["Scroll".into()],
         capabilities: ControllerCapabilities::DIRECT_COLOR,

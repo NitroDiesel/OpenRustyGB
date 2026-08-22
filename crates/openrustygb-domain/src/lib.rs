@@ -142,6 +142,7 @@ pub struct ControllerCapabilities(u32);
 
 impl ControllerCapabilities {
     pub const DIRECT_COLOR: Self = Self(1 << 0);
+    pub const PER_LED_COLOR: Self = Self(1 << 1);
 
     #[must_use]
     pub const fn contains(self, capability: Self) -> bool {
@@ -153,10 +154,24 @@ impl ControllerCapabilities {
 pub struct ControllerDescription {
     pub name: String,
     pub vendor: String,
+    pub description: String,
     pub device_type: DeviceType,
+    pub modes: Vec<ModeDescription>,
     pub zone_names: Vec<String>,
     pub led_names: Vec<String>,
     pub capabilities: ControllerCapabilities,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ModeDescription {
+    pub name: String,
+    pub value: u32,
+    pub color_mode: ModeColorMode,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ModeColorMode {
+    PerLed,
 }
 
 #[cfg(test)]
