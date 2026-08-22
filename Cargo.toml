@@ -14,6 +14,7 @@ members = [
     "crates/drivers/dream-cheeky-webmail-notifier",
     "crates/drivers/nvidia-esa-xps-730x",
     "crates/drivers/madcatz-cyborg-light",
+    "crates/drivers/thingm-blink1-mk2",
     "crates/openrustygb-app",
     "xtask",
 ]

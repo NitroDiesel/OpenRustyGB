@@ -45,6 +45,10 @@ use openrustygb_driver_patriot_viper_v550::{
     MATCH as VIPER_MATCH, PerLedColorTransaction as ViperColorTransaction,
     matches as matches_viper,
 };
+use openrustygb_driver_thingm_blink1_mk2::{
+    BlinkMode, FEATURE_REPORT_LEN as THINGM_REPORT_LEN, MATCH as THINGM_MATCH,
+    ModeTransaction as ThingMModeTransaction, matches as matches_thingm,
+};
 use openrustygb_runtime::{CommandOutcome, ControllerActor, ControllerBackend};
 use openrustygb_transport_hid::{HidInventory, HidOutput, HidTransportError};
 
@@ -60,6 +64,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         [command] if command == "probe-n5312" => probe_n5312(),
         [command] if command == "probe-nvidia-esa" => probe_nvidia_esa(),
         [command] if command == "probe-viper-v550" => probe_viper(),
+        [command] if command == "probe-thingm-blink" => probe_thingm(),
         [command] if command == "probe-faustus" => {
             probe_faustus();
             Ok(())
@@ -120,31 +125,71 @@ fn main() -> Result<(), Box<dyn Error>> {
                 parse_u8_decimal(speed, "speed")?,
             )
         }
+        [command, confirmation, mode, led_a, led_b, speed]
+            if command == "set-thingm-blink" && confirmation == "--confirm-reversible-write" =>
+        {
+            set_thingm_mode(
+                parse_thingm_mode(mode)?,
+                [parse_rgb(led_a)?, parse_rgb(led_b)?],
+                parse_u32_decimal(speed, "speed")?,
+            )
+        }
         _ => {
-            eprintln!(
-                "Usage:\n  openrustygb probe-haste2\n  openrustygb probe-dream-cheeky\n  \
-                 openrustygb probe-gamesir\n  \
-                 openrustygb probe-lexip\n  \
-                 openrustygb probe-madcatz\n  \
-                 openrustygb probe-n5312\n  \
-                 openrustygb probe-nvidia-esa\n  \
-                 openrustygb probe-viper-v550\n  \
-                 openrustygb probe-faustus\n  \
-                 openrustygb set-haste2-color --confirm-reversible-write RRGGBB\n  \
-                 openrustygb set-dream-cheeky-color --confirm-reversible-write RRGGBB\n  \
-                 openrustygb set-gamesir-color --confirm-reversible-write RRGGBB\n  \
-                 openrustygb set-lexip-color --confirm-reversible-write RRGGBB\n  \
-                 openrustygb set-madcatz-color --confirm-reversible-write RRGGBB <brightness>\n  \
-                 openrustygb set-viper-v550-color --confirm-reversible-write RRGGBB\n  \
-                 openrustygb set-nvidia-esa-color --confirm-reversible-write RRGGBB\n  \
-                 openrustygb set-n5312-mode --confirm-reversible-write \
-                 <direct|breathing|single-breath|off> RRGGBB <brightness> <speed>\n  \
-                 openrustygb set-faustus-mode --confirm-reversible-write \
-                 <static|breathing|color-cycle|strobe> RRGGBB"
-            );
+            print_usage();
             Ok(())
         }
     }
+}
+
+fn print_usage() {
+    eprintln!(
+        "Usage:\n  openrustygb probe-haste2\n  openrustygb probe-dream-cheeky\n  \
+         openrustygb probe-gamesir\n  \
+         openrustygb probe-lexip\n  \
+         openrustygb probe-madcatz\n  \
+         openrustygb probe-n5312\n  \
+         openrustygb probe-nvidia-esa\n  \
+         openrustygb probe-viper-v550\n  \
+         openrustygb probe-thingm-blink\n  \
+         openrustygb probe-faustus\n  \
+         openrustygb set-haste2-color --confirm-reversible-write RRGGBB\n  \
+         openrustygb set-dream-cheeky-color --confirm-reversible-write RRGGBB\n  \
+         openrustygb set-gamesir-color --confirm-reversible-write RRGGBB\n  \
+         openrustygb set-lexip-color --confirm-reversible-write RRGGBB\n  \
+         openrustygb set-madcatz-color --confirm-reversible-write RRGGBB <brightness>\n  \
+         openrustygb set-viper-v550-color --confirm-reversible-write RRGGBB\n  \
+         openrustygb set-nvidia-esa-color --confirm-reversible-write RRGGBB\n  \
+         openrustygb set-thingm-blink --confirm-reversible-write \
+         <off|direct|fade> <LED-A-RRGGBB> <LED-B-RRGGBB> <speed>\n  \
+         openrustygb set-n5312-mode --confirm-reversible-write \
+         <direct|breathing|single-breath|off> RRGGBB <brightness> <speed>\n  \
+         openrustygb set-faustus-mode --confirm-reversible-write \
+         <static|breathing|color-cycle|strobe> RRGGBB"
+    );
+}
+
+fn probe_thingm() -> Result<(), Box<dyn Error>> {
+    let endpoints = HidInventory::enumerate()?;
+    let exact: Vec<_> = endpoints
+        .iter()
+        .filter(|endpoint| matches_thingm(endpoint))
+        .collect();
+    if exact.is_empty() {
+        println!("No ThingM blink(1) mk2 endpoint found.");
+    } else {
+        for endpoint in exact {
+            println!(
+                "Found ThingM blink(1) mk2 endpoint: {:04X}:{:04X}, interface {}, usage {:04X}:{:04X}",
+                endpoint.vendor_id,
+                endpoint.product_id,
+                endpoint.interface_number,
+                endpoint.usage_page,
+                endpoint.usage
+            );
+        }
+    }
+    println!("Probe completed without opening a device or writing a report.");
+    Ok(())
 }
 
 fn probe_madcatz() -> Result<(), Box<dyn Error>> {
@@ -613,6 +658,44 @@ fn set_nvidia_esa_color(color: Rgb8) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+fn set_thingm_mode(mode: BlinkMode, colors: [Rgb8; 2], speed: u32) -> Result<(), Box<dyn Error>> {
+    let endpoints = HidInventory::enumerate()?;
+    let mut exact = endpoints.into_iter().filter(matches_thingm);
+    let endpoint = exact
+        .next()
+        .ok_or("ThingM blink(1) mk2 endpoint not found")?;
+    if exact.next().is_some() {
+        return Err("more than one ThingM blink(1) mk2 endpoint found; refusing to choose".into());
+    }
+
+    let output = HidOutput::<THINGM_REPORT_LEN>::open_matching(&endpoint, THINGM_MATCH)?;
+    let target = ControllerRef {
+        id: ControllerId::new(NonZeroU64::new(9).expect("nine is non-zero")),
+        incarnation: Incarnation::new(NonZeroU32::new(1).expect("one is non-zero")),
+    };
+    let actor = ControllerActor::start(target, ThingMBackend { output }, 4)?;
+    let outcome = actor
+        .submit_barrier(
+            target,
+            ThingMCommand {
+                mode,
+                colors,
+                speed,
+            },
+        )?
+        .wait()?;
+    actor.shutdown()?;
+    match outcome {
+        CommandOutcome::Applied { .. } => {}
+        CommandOutcome::Failed { error, .. } => return Err(error.into()),
+        CommandOutcome::Superseded { .. } => {
+            return Err("mode command was unexpectedly superseded".into());
+        }
+    }
+    println!("Applied one reversible ThingM blink(1) mk2 mode transaction.");
+    Ok(())
+}
+
 #[derive(Debug)]
 struct Haste2Backend {
     output: HidOutput<OUTPUT_REPORT_LEN>,
@@ -887,6 +970,36 @@ struct NvidiaEsaBackend {
     output: HidOutput<NVIDIA_ESA_REPORT_LEN>,
 }
 
+#[derive(Clone, Copy, Debug)]
+struct ThingMCommand {
+    mode: BlinkMode,
+    colors: [Rgb8; 2],
+    speed: u32,
+}
+
+#[derive(Debug)]
+struct ThingMBackend {
+    output: HidOutput<THINGM_REPORT_LEN>,
+}
+
+impl ControllerBackend for ThingMBackend {
+    type Barrier = ThingMCommand;
+    type Error = HidTransportError;
+
+    fn apply_whole_color(&mut self, color: Rgb8) -> Result<(), Self::Error> {
+        ThingMModeTransaction::new(BlinkMode::Direct, [color; 2], 0).apply(&mut self.output)
+    }
+
+    fn apply_barrier(&mut self, command: Self::Barrier) -> Result<(), Self::Error> {
+        ThingMModeTransaction::new(command.mode, command.colors, command.speed)
+            .apply(&mut self.output)
+    }
+
+    fn shutdown(&mut self) -> Result<(), Self::Error> {
+        Ok(())
+    }
+}
+
 #[derive(Debug)]
 struct NvidiaEsaBackendError(ExactWriteError<HidTransportError>);
 
@@ -948,10 +1061,25 @@ fn parse_n5312_mode(input: &str) -> Result<N5312Mode, Box<dyn Error>> {
     }
 }
 
+fn parse_thingm_mode(input: &str) -> Result<BlinkMode, Box<dyn Error>> {
+    match input {
+        "off" => Ok(BlinkMode::Off),
+        "direct" => Ok(BlinkMode::Direct),
+        "fade" => Ok(BlinkMode::Fade),
+        _ => Err("ThingM mode must be off, direct, or fade".into()),
+    }
+}
+
 fn parse_u8_decimal(input: &str, field: &str) -> Result<u8, Box<dyn Error>> {
     input
         .parse()
         .map_err(|_| format!("{field} must be a decimal number from 0 through 255").into())
+}
+
+fn parse_u32_decimal(input: &str, field: &str) -> Result<u32, Box<dyn Error>> {
+    input
+        .parse()
+        .map_err(|_| format!("{field} must be a decimal number from 0 through 4294967295").into())
 }
 
 #[cfg(test)]
@@ -985,5 +1113,13 @@ mod tests {
         assert!(parse_n5312_mode("single").is_err());
         assert_eq!(parse_u8_decimal("100", "brightness").unwrap(), 100);
         assert!(parse_u8_decimal("256", "brightness").is_err());
+    }
+
+    #[test]
+    fn thingm_mode_and_speed_parsers_are_strict() {
+        assert_eq!(parse_thingm_mode("fade").unwrap(), BlinkMode::Fade);
+        assert!(parse_thingm_mode("breathing").is_err());
+        assert_eq!(parse_u32_decimal("65535", "speed").unwrap(), 65_535);
+        assert!(parse_u32_decimal("4294967296", "speed").is_err());
     }
 }

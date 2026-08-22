@@ -90,6 +90,7 @@ dependencies = [
  "openrustygb-driver-n5312a-mouse",
  "openrustygb-driver-nvidia-esa-xps-730x",
  "openrustygb-driver-patriot-viper-v550",
+ "openrustygb-driver-thingm-blink1-mk2",
  "openrustygb-runtime",
  "openrustygb-transport-hid",
 ]
@@ -167,6 +168,14 @@ dependencies = [
 
 [[package]]
 name = "openrustygb-driver-patriot-viper-v550"
+version = "0.0.1"
+dependencies = [
+ "openrustygb-domain",
+ "openrustygb-driver-api",
+]
+
+[[package]]
+name = "openrustygb-driver-thingm-blink1-mk2"
 version = "0.0.1"
 dependencies = [
  "openrustygb-domain",

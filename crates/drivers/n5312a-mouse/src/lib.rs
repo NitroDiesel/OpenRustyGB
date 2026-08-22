@@ -200,9 +200,9 @@ pub fn description() -> ControllerDescription {
         current: BRIGHTNESS_MAX,
     });
     let speed = Some(SpeedRange {
-        min: SPEED_MIN,
-        max: SPEED_MAX,
-        current: SPEED_MIN,
+        min: u32::from(SPEED_MIN),
+        max: u32::from(SPEED_MAX),
+        current: u32::from(SPEED_MIN),
     });
     ControllerDescription {
         name: "N5312A USB Optical Mouse".into(),

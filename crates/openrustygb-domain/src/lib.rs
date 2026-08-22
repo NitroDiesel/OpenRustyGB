@@ -186,9 +186,9 @@ pub enum ModeColorMode {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct SpeedRange {
-    pub min: u8,
-    pub max: u8,
-    pub current: u8,
+    pub min: u32,
+    pub max: u32,
+    pub current: u32,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

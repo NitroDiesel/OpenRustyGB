@@ -16,6 +16,7 @@ const PORTED_FAMILIES: &[(&str, &str)] = &[
     ("N5312AController", "n5312a-mouse"),
     ("NvidiaESAController", "nvidia-esa-xps-730x"),
     ("PatriotViperMouseController", "patriot-viper-v550"),
+    ("ThingMController", "thingm-blink1-mk2"),
 ];
 const PORTED_DETECTOR_SOURCES: &[&str] = &[
     "Controllers/DreamCheekyController/DreamCheekyControllerDetect.cpp",
@@ -25,6 +26,7 @@ const PORTED_DETECTOR_SOURCES: &[&str] = &[
     "Controllers/N5312AController/N5312AControllerDetect.cpp",
     "Controllers/NvidiaESAController/NvidiaESAControllerDetect.cpp",
     "Controllers/PatriotViperMouseController/PatriotViperMouseControllerDetect.cpp",
+    "Controllers/ThingMController/ThingMControllerDetect.cpp",
 ];
 
 fn main() -> Result<(), Box<dyn Error>> {

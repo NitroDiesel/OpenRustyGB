@@ -120,3 +120,18 @@ device completes its live test.
 Physical MadCatz hardware was not present for this contraction. The family
 remains release-blocked by the global hardware-evidence policy until a matching
 device completes its live test.
+
+## ThingMController
+
+- Rust package: `openrustygb-driver-thingm-blink1-mk2`
+- Device: ThingM blink(1) mk2
+- Match: VID `27B8`, PID `01ED`, usage page `FF00`, usage `0001`; the native detector accepts any interface
+- Preserved model: LED strip with Off value `0`, Direct value `1`, Fade value `2`, one `blink(1) mk2` zone, and LEDs A and B
+- Preserved output: one 9-byte feature report per LED with command `01 63`, RGB, the low 16 bits of fade speed in big-endian order, LED ID, and a trailing zero
+- Preserved mode behavior: Off forces both LEDs black, Direct forces zero speed, Fade applies the requested speed, and every mode update writes LED A before LED B
+- Verification: flexible-interface and exact-usage tests, packet and speed goldens, mode-semantics test, two-LED ordering test, model-shape test, executable read-only probe, workspace Clippy and tests
+- Deleted native files: `BlinkController.cpp`, `BlinkController.h`, `RGBController_BlinkController.cpp`, `RGBController_BlinkController.h`, `ThingMControllerDetect.cpp`
+
+Physical ThingM hardware was not present for this contraction. The family
+remains release-blocked by the global hardware-evidence policy until a matching
+device completes its live test.
