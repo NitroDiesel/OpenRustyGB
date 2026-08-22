@@ -9,6 +9,7 @@ repository.workspace = true
 [dependencies]
 openrustygb-domain = { path = "../openrustygb-domain" }
 openrustygb-driver-api = { path = "../openrustygb-driver-api" }
+openrustygb-driver-faustus-keyboard = { path = "../drivers/faustus-keyboard" }
 openrustygb-driver-gamesir-nova-lite-2 = { path = "../drivers/gamesir-nova-lite-2" }
 openrustygb-driver-hyperx-pulsefire-haste2 = { path = "../drivers/hyperx-pulsefire-haste2" }
 openrustygb-runtime = { path = "../openrustygb-runtime" }

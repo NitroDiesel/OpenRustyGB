@@ -7,7 +7,10 @@ use std::path::{Path, PathBuf};
 
 const PINNED_CONTROLLER_FAMILIES: usize = 197;
 const PINNED_DETECTOR_SOURCES: usize = 224;
-const PORTED_FAMILIES: &[(&str, &str)] = &[("GameSirController", "gamesir-nova-lite-2")];
+const PORTED_FAMILIES: &[(&str, &str)] = &[
+    ("GameSirController", "gamesir-nova-lite-2"),
+    ("FaustusController", "faustus-keyboard"),
+];
 const PORTED_DETECTOR_SOURCES: &[&str] =
     &["Controllers/GameSirController/GameSirControllerDetect.cpp"];
 

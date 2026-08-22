@@ -143,6 +143,12 @@ pub struct ControllerCapabilities(u32);
 impl ControllerCapabilities {
     pub const DIRECT_COLOR: Self = Self(1 << 0);
     pub const PER_LED_COLOR: Self = Self(1 << 1);
+    pub const EFFECTS: Self = Self(1 << 2);
+
+    #[must_use]
+    pub const fn union(self, other: Self) -> Self {
+        Self(self.0 | other.0)
+    }
 
     #[must_use]
     pub const fn contains(self, capability: Self) -> bool {
@@ -167,11 +173,20 @@ pub struct ModeDescription {
     pub name: String,
     pub value: u32,
     pub color_mode: ModeColorMode,
+    pub speed: Option<SpeedRange>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ModeColorMode {
+    None,
     PerLed,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct SpeedRange {
+    pub min: u8,
+    pub max: u8,
+    pub current: u8,
 }
 
 #[cfg(test)]

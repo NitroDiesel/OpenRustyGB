@@ -76,6 +76,7 @@ pub fn description() -> ControllerDescription {
             name: "Static".into(),
             value: 0xFFFF,
             color_mode: ModeColorMode::PerLed,
+            speed: None,
         }],
         zone_names: vec!["Controller".into()],
         led_names: vec!["Main LED".into()],

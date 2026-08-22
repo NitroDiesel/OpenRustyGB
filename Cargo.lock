@@ -81,6 +81,7 @@ version = "0.0.1"
 dependencies = [
  "openrustygb-domain",
  "openrustygb-driver-api",
+ "openrustygb-driver-faustus-keyboard",
  "openrustygb-driver-gamesir-nova-lite-2",
  "openrustygb-driver-hyperx-pulsefire-haste2",
  "openrustygb-runtime",
@@ -94,6 +95,13 @@ version = "0.0.1"
 [[package]]
 name = "openrustygb-driver-api"
 version = "0.0.1"
+
+[[package]]
+name = "openrustygb-driver-faustus-keyboard"
+version = "0.0.1"
+dependencies = [
+ "openrustygb-domain",
+]
 
 [[package]]
 name = "openrustygb-driver-gamesir-nova-lite-2"

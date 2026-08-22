@@ -18,3 +18,18 @@ pinned source and provenance.
 Physical GameSir hardware was not present for this contraction. The family
 remains release-blocked by the global hardware-evidence policy until a matching
 device completes its live test.
+
+## FaustusController
+
+- Rust package: `openrustygb-driver-faustus-keyboard`
+- Device: ASUS TUF Laptop Keyboard using the Linux Faustus sysfs driver
+- Exact match: all six attributes beneath `/sys/devices/platform/faustus/kbbl`: `kbbl_red`, `kbbl_green`, `kbbl_blue`, `kbbl_mode`, `kbbl_flags`, and `kbbl_set`
+- Preserved model: laptop, Static, Breathing, Color Cycle, and Strobe modes, one Keyboard Backlight zone, and one Keyboard Backlight LED
+- Preserved mode values: Static `0`, Breathing `1`, Color Cycle `2`, Strobe `3`; Breathing and Color Cycle expose speed `0..2` with default `1`
+- Preserved output: lowercase hexadecimal RGB and mode values, flags `2a`, followed by commit value `2`
+- Verification: exact six-file detection test, output-value golden, model-shape test, executable read-only probe, workspace Clippy and tests
+- Deleted native files: `RGBController_Faustus_Linux.cpp`, `RGBController_Faustus_Linux.h`
+
+Physical Faustus hardware and its Linux sysfs interface were not present for
+this contraction. The family remains release-blocked by the global
+hardware-evidence policy until a matching device completes its live test.

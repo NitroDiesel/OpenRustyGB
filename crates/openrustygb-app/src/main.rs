@@ -4,9 +4,13 @@ use std::env;
 use std::error::Error;
 use std::fmt;
 use std::num::{NonZeroU32, NonZeroU64};
+use std::path::Path;
 
 use openrustygb_domain::{ControllerId, ControllerRef, Incarnation, Rgb8};
 use openrustygb_driver_api::{ExactWriteError, PrefixTooLong};
+use openrustygb_driver_faustus_keyboard::{
+    DEFAULT_BASE_PATH as FAUSTUS_BASE_PATH, FaustusMode, FaustusUpdate, detect_at as detect_faustus,
+};
 use openrustygb_driver_gamesir_nova_lite_2::{
     MATCH as GAMESIR_MATCH, OUTPUT_REPORT_LEN as GAMESIR_REPORT_LEN,
     StaticColorTransaction as GameSirColorTransaction, matches as matches_gamesir,
@@ -23,6 +27,10 @@ fn main() -> Result<(), Box<dyn Error>> {
         [] => probe(),
         [command] if command == "probe-haste2" => probe(),
         [command] if command == "probe-gamesir" => probe_gamesir(),
+        [command] if command == "probe-faustus" => {
+            probe_faustus();
+            Ok(())
+        }
         [command, confirmation, color]
             if command == "set-haste2-color" && confirmation == "--confirm-reversible-write" =>
         {
@@ -33,15 +41,43 @@ fn main() -> Result<(), Box<dyn Error>> {
         {
             set_gamesir_color(parse_rgb(color)?)
         }
+        [command, confirmation, mode, color]
+            if command == "set-faustus-mode" && confirmation == "--confirm-reversible-write" =>
+        {
+            set_faustus_mode(parse_faustus_mode(mode)?, parse_rgb(color)?)
+        }
         _ => {
             eprintln!(
                 "Usage:\n  openrustygb probe-haste2\n  openrustygb probe-gamesir\n  \
+                 openrustygb probe-faustus\n  \
                  openrustygb set-haste2-color --confirm-reversible-write RRGGBB\n  \
-                 openrustygb set-gamesir-color --confirm-reversible-write RRGGBB"
+                 openrustygb set-gamesir-color --confirm-reversible-write RRGGBB\n  \
+                 openrustygb set-faustus-mode --confirm-reversible-write \
+                 <static|breathing|color-cycle|strobe> RRGGBB"
             );
             Ok(())
         }
     }
+}
+
+fn probe_faustus() {
+    let base = Path::new(FAUSTUS_BASE_PATH);
+    if detect_faustus(base) {
+        println!("Found exact Faustus ASUS TUF keyboard sysfs interface.");
+    } else {
+        println!("No exact Faustus ASUS TUF keyboard sysfs interface found.");
+    }
+    println!("Probe completed without opening an attribute or writing a value.");
+}
+
+fn set_faustus_mode(mode: FaustusMode, color: Rgb8) -> Result<(), Box<dyn Error>> {
+    let base = Path::new(FAUSTUS_BASE_PATH);
+    if !detect_faustus(base) {
+        return Err("exact Faustus ASUS TUF keyboard sysfs interface not found".into());
+    }
+    FaustusUpdate { mode, color }.apply(base)?;
+    println!("Applied one reversible Faustus keyboard mode transaction.");
+    Ok(())
 }
 
 fn probe_gamesir() -> Result<(), Box<dyn Error>> {
@@ -247,6 +283,16 @@ fn parse_rgb(input: &str) -> Result<Rgb8, Box<dyn Error>> {
     ))
 }
 
+fn parse_faustus_mode(input: &str) -> Result<FaustusMode, Box<dyn Error>> {
+    match input {
+        "static" => Ok(FaustusMode::Static),
+        "breathing" => Ok(FaustusMode::Breathing),
+        "color-cycle" => Ok(FaustusMode::ColorCycle),
+        "strobe" => Ok(FaustusMode::Strobe),
+        _ => Err("Faustus mode must be static, breathing, color-cycle, or strobe".into()),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -257,5 +303,15 @@ mod tests {
         assert!(parse_rgb("#123456").is_err());
         assert!(parse_rgb("12345").is_err());
         assert!(parse_rgb("xyzxyz").is_err());
+    }
+
+    #[test]
+    fn faustus_mode_parser_is_strict() {
+        assert_eq!(
+            parse_faustus_mode("breathing").unwrap(),
+            FaustusMode::Breathing
+        );
+        assert!(parse_faustus_mode("cycle").is_err());
+        assert!(parse_faustus_mode("Breathing").is_err());
     }
 }
