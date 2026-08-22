@@ -22,6 +22,11 @@ use openrustygb_driver_lexip_np93_alpha::{
     DirectColorTransaction as LexipColorTransaction, MATCH as LEXIP_MATCH,
     OUTPUT_REPORT_LEN as LEXIP_REPORT_LEN, matches as matches_lexip,
 };
+use openrustygb_driver_n5312a_mouse::{
+    ColorTransaction as N5312ColorTransaction, FEATURE_REPORT_LEN as N5312_REPORT_LEN,
+    Initialization as N5312Initialization, InvalidModeSettings, MATCH as N5312_MATCH,
+    ModeTransaction as N5312ModeTransaction, N5312Mode, matches as matches_n5312,
+};
 use openrustygb_runtime::{CommandOutcome, ControllerActor, ControllerBackend};
 use openrustygb_transport_hid::{HidInventory, HidOutput, HidTransportError};
 
@@ -32,6 +37,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         [command] if command == "probe-haste2" => probe(),
         [command] if command == "probe-gamesir" => probe_gamesir(),
         [command] if command == "probe-lexip" => probe_lexip(),
+        [command] if command == "probe-n5312" => probe_n5312(),
         [command] if command == "probe-faustus" => {
             probe_faustus();
             Ok(())
@@ -56,20 +62,57 @@ fn main() -> Result<(), Box<dyn Error>> {
         {
             set_faustus_mode(parse_faustus_mode(mode)?, parse_rgb(color)?)
         }
+        [command, confirmation, mode, color, brightness, speed]
+            if command == "set-n5312-mode" && confirmation == "--confirm-reversible-write" =>
+        {
+            set_n5312_mode(
+                parse_n5312_mode(mode)?,
+                parse_rgb(color)?,
+                parse_u8_decimal(brightness, "brightness")?,
+                parse_u8_decimal(speed, "speed")?,
+            )
+        }
         _ => {
             eprintln!(
                 "Usage:\n  openrustygb probe-haste2\n  openrustygb probe-gamesir\n  \
                  openrustygb probe-lexip\n  \
+                 openrustygb probe-n5312\n  \
                  openrustygb probe-faustus\n  \
                  openrustygb set-haste2-color --confirm-reversible-write RRGGBB\n  \
                  openrustygb set-gamesir-color --confirm-reversible-write RRGGBB\n  \
                  openrustygb set-lexip-color --confirm-reversible-write RRGGBB\n  \
+                 openrustygb set-n5312-mode --confirm-reversible-write \
+                 <direct|breathing|single-breath|off> RRGGBB <brightness> <speed>\n  \
                  openrustygb set-faustus-mode --confirm-reversible-write \
                  <static|breathing|color-cycle|strobe> RRGGBB"
             );
             Ok(())
         }
     }
+}
+
+fn probe_n5312() -> Result<(), Box<dyn Error>> {
+    let endpoints = HidInventory::enumerate()?;
+    let exact: Vec<_> = endpoints
+        .iter()
+        .filter(|endpoint| matches_n5312(endpoint))
+        .collect();
+    if exact.is_empty() {
+        println!("No exact N5312A mouse lighting endpoint found.");
+    } else {
+        for endpoint in exact {
+            println!(
+                "Found exact N5312A endpoint: {:04X}:{:04X}, interface {}, usage {:04X}:{:04X}",
+                endpoint.vendor_id,
+                endpoint.product_id,
+                endpoint.interface_number,
+                endpoint.usage_page,
+                endpoint.usage
+            );
+        }
+    }
+    println!("Probe completed without opening a device or writing a report.");
+    Ok(())
 }
 
 fn probe_lexip() -> Result<(), Box<dyn Error>> {
@@ -253,6 +296,51 @@ fn set_lexip_color(color: Rgb8) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+fn set_n5312_mode(
+    mode: N5312Mode,
+    color: Rgb8,
+    brightness: u8,
+    speed: u8,
+) -> Result<(), Box<dyn Error>> {
+    let endpoints = HidInventory::enumerate()?;
+    let mut exact = endpoints.into_iter().filter(matches_n5312);
+    let endpoint = exact
+        .next()
+        .ok_or("exact N5312A mouse lighting endpoint not found")?;
+    if exact.next().is_some() {
+        return Err("more than one exact N5312A endpoint found; refusing to choose".into());
+    }
+
+    let output = HidOutput::<N5312_REPORT_LEN>::open_exact(&endpoint, N5312_MATCH)?;
+    let backend = N5312Backend::initialize(output)?;
+    let target = ControllerRef {
+        id: ControllerId::new(NonZeroU64::new(4).expect("four is non-zero")),
+        incarnation: Incarnation::new(NonZeroU32::new(1).expect("one is non-zero")),
+    };
+    let actor = ControllerActor::start(target, backend, 4)?;
+    let outcome = actor
+        .submit_barrier(
+            target,
+            N5312Command {
+                mode,
+                color,
+                brightness,
+                speed,
+            },
+        )?
+        .wait()?;
+    actor.shutdown()?;
+    match outcome {
+        CommandOutcome::Applied { .. } => {}
+        CommandOutcome::Failed { error, .. } => return Err(error.into()),
+        CommandOutcome::Superseded { .. } => {
+            return Err("mode command was unexpectedly superseded".into());
+        }
+    }
+    println!("Applied one reversible N5312A mode transaction.");
+    Ok(())
+}
+
 #[derive(Debug)]
 struct Haste2Backend {
     output: HidOutput<OUTPUT_REPORT_LEN>,
@@ -379,6 +467,70 @@ impl ControllerBackend for LexipBackend {
     }
 }
 
+#[derive(Clone, Copy, Debug)]
+struct N5312Command {
+    mode: N5312Mode,
+    color: Rgb8,
+    brightness: u8,
+    speed: u8,
+}
+
+#[derive(Debug)]
+struct N5312Backend {
+    output: HidOutput<N5312_REPORT_LEN>,
+}
+
+impl N5312Backend {
+    fn initialize(mut output: HidOutput<N5312_REPORT_LEN>) -> Result<Self, HidTransportError> {
+        N5312Initialization::new().apply(&mut output)?;
+        Ok(Self { output })
+    }
+}
+
+#[derive(Debug)]
+enum N5312BackendError {
+    Settings(InvalidModeSettings),
+    Output(HidTransportError),
+}
+
+impl fmt::Display for N5312BackendError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Settings(error) => write!(f, "invalid N5312A mode: {error}"),
+            Self::Output(error) => write!(f, "could not apply N5312A command: {error}"),
+        }
+    }
+}
+
+impl Error for N5312BackendError {}
+
+impl ControllerBackend for N5312Backend {
+    type Barrier = N5312Command;
+    type Error = N5312BackendError;
+
+    fn apply_whole_color(&mut self, color: Rgb8) -> Result<(), Self::Error> {
+        N5312ColorTransaction::new(color)
+            .apply(&mut self.output)
+            .map_err(N5312BackendError::Output)
+    }
+
+    fn apply_barrier(&mut self, command: Self::Barrier) -> Result<(), Self::Error> {
+        N5312ModeTransaction::new(
+            command.mode,
+            command.color,
+            command.brightness,
+            command.speed,
+        )
+        .map_err(N5312BackendError::Settings)?
+        .apply(&mut self.output)
+        .map_err(N5312BackendError::Output)
+    }
+
+    fn shutdown(&mut self) -> Result<(), Self::Error> {
+        Ok(())
+    }
+}
+
 fn parse_rgb(input: &str) -> Result<Rgb8, Box<dyn Error>> {
     if input.len() != 6 || !input.bytes().all(|byte| byte.is_ascii_hexdigit()) {
         return Err("color must be exactly six hexadecimal digits (RRGGBB)".into());
@@ -398,6 +550,22 @@ fn parse_faustus_mode(input: &str) -> Result<FaustusMode, Box<dyn Error>> {
         "strobe" => Ok(FaustusMode::Strobe),
         _ => Err("Faustus mode must be static, breathing, color-cycle, or strobe".into()),
     }
+}
+
+fn parse_n5312_mode(input: &str) -> Result<N5312Mode, Box<dyn Error>> {
+    match input {
+        "direct" => Ok(N5312Mode::Direct),
+        "breathing" => Ok(N5312Mode::Breathing),
+        "single-breath" => Ok(N5312Mode::SingleBreath),
+        "off" => Ok(N5312Mode::Off),
+        _ => Err("N5312A mode must be direct, breathing, single-breath, or off".into()),
+    }
+}
+
+fn parse_u8_decimal(input: &str, field: &str) -> Result<u8, Box<dyn Error>> {
+    input
+        .parse()
+        .map_err(|_| format!("{field} must be a decimal number from 0 through 255").into())
 }
 
 #[cfg(test)]
@@ -420,5 +588,16 @@ mod tests {
         );
         assert!(parse_faustus_mode("cycle").is_err());
         assert!(parse_faustus_mode("Breathing").is_err());
+    }
+
+    #[test]
+    fn n5312_mode_and_number_parsers_are_strict() {
+        assert_eq!(
+            parse_n5312_mode("single-breath").unwrap(),
+            N5312Mode::SingleBreath
+        );
+        assert!(parse_n5312_mode("single").is_err());
+        assert_eq!(parse_u8_decimal("100", "brightness").unwrap(), 100);
+        assert!(parse_u8_decimal("256", "brightness").is_err());
     }
 }

@@ -47,3 +47,18 @@ hardware-evidence policy until a matching device completes its live test.
 Physical Lexip hardware was not present for this contraction. The family
 remains release-blocked by the global hardware-evidence policy until a matching
 device completes its live test.
+
+## N5312AController
+
+- Rust package: `openrustygb-driver-n5312a-mouse`
+- Device: N5312A USB optical mouse controller, including identified ANT Esports KM540 and Marvo M115 devices
+- Exact match: VID `4E53`, PID `5406`, interface `1`, usage page `FF01`, usage `0001`
+- Preserved model: mouse with Direct, Breathing, Single Breath, and Off modes, one Mouse zone, and one LED
+- Preserved controls: brightness `10..100`; Breathing and Single Breath speed `1..10`
+- Preserved output: initialization feature report `07 A0`, color report `07 0B 01 RR GG BB`, then mode report `07 0A MM 01 01 01 SS BB`, all padded to 8 bytes
+- Verification: exact-match rejection tests, initialization and mode packet goldens, range rejection, forced-black Off behavior, model-shape test, executable read-only probe, workspace Clippy and tests
+- Deleted native files: `N5312AController.cpp`, `N5312AController.h`, `N5312AControllerDetect.cpp`, `RGBController_N5312A.cpp`, `RGBController_N5312A.h`
+
+Physical N5312A hardware was not present for this contraction. The family
+remains release-blocked by the global hardware-evidence policy until a matching
+device completes its live test.

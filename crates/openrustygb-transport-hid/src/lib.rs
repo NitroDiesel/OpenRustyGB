@@ -5,7 +5,9 @@ use std::fmt;
 use std::sync::Arc;
 
 use hidapi::{HidApi, HidDevice};
-use openrustygb_driver_api::{ExactHidMatch, HidEndpointInfo, OutputReport, OutputWriter};
+use openrustygb_driver_api::{
+    ExactHidMatch, FeatureWriter, HidDeviceMatch, HidEndpointInfo, OutputReport, OutputWriter,
+};
 
 #[derive(Debug)]
 pub enum HidTransportError {
@@ -79,6 +81,19 @@ impl<const N: usize> HidOutput<N> {
         previously_seen: &HidEndpointInfo,
         approved: ExactHidMatch,
     ) -> Result<Self, HidTransportError> {
+        Self::open_matching(previously_seen, approved.into())
+    }
+
+    /// Re-enumerates and revalidates all fields selected by the approved matcher.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`HidTransportError::EndpointChanged`] if the endpoint no longer
+    /// matches or another [`HidTransportError`] if opening fails.
+    pub fn open_matching(
+        previously_seen: &HidEndpointInfo,
+        approved: HidDeviceMatch,
+    ) -> Result<Self, HidTransportError> {
         if !approved.matches(previously_seen) {
             return Err(HidTransportError::EndpointChanged);
         }
@@ -96,6 +111,16 @@ impl<const N: usize> HidOutput<N> {
 
         let device = api.open_path(&path)?;
         Ok(Self { device })
+    }
+}
+
+impl<const N: usize> FeatureWriter<N> for HidOutput<N> {
+    type Error = HidTransportError;
+
+    fn send_feature_report(&mut self, report: &OutputReport<N>) -> Result<(), Self::Error> {
+        self.device
+            .send_feature_report(report.as_bytes())
+            .map_err(Into::into)
     }
 }
 

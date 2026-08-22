@@ -58,6 +58,42 @@ pub struct ExactHidMatch {
     pub usage: u16,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct HidDeviceMatch {
+    pub vendor_id: u16,
+    pub product_id: u16,
+    pub interface_number: Option<i32>,
+    pub usage_page: Option<u16>,
+    pub usage: Option<u16>,
+}
+
+impl HidDeviceMatch {
+    #[must_use]
+    pub fn matches(self, endpoint: &HidEndpointInfo) -> bool {
+        endpoint.vendor_id == self.vendor_id
+            && endpoint.product_id == self.product_id
+            && self
+                .interface_number
+                .is_none_or(|value| endpoint.interface_number == value)
+            && self
+                .usage_page
+                .is_none_or(|value| endpoint.usage_page == value)
+            && self.usage.is_none_or(|value| endpoint.usage == value)
+    }
+}
+
+impl From<ExactHidMatch> for HidDeviceMatch {
+    fn from(value: ExactHidMatch) -> Self {
+        Self {
+            vendor_id: value.vendor_id,
+            product_id: value.product_id,
+            interface_number: Some(value.interface_number),
+            usage_page: Some(value.usage_page),
+            usage: Some(value.usage),
+        }
+    }
+}
+
 impl ExactHidMatch {
     #[must_use]
     pub fn matches(self, endpoint: &HidEndpointInfo) -> bool {
@@ -91,6 +127,11 @@ impl fmt::Display for PrefixTooLong {
 impl std::error::Error for PrefixTooLong {}
 
 impl<const N: usize> OutputReport<N> {
+    #[must_use]
+    pub const fn from_array(bytes: [u8; N]) -> Self {
+        Self(bytes)
+    }
+
     /// Builds a fixed-size output report and zero-fills the unused tail.
     ///
     /// # Errors
@@ -123,6 +164,17 @@ pub trait OutputWriter<const N: usize> {
     ///
     /// Returns the transport's error when the output operation fails.
     fn write_output(&mut self, report: &OutputReport<N>) -> Result<usize, Self::Error>;
+}
+
+pub trait FeatureWriter<const N: usize> {
+    type Error: std::error::Error + Send + Sync + 'static;
+
+    /// Sends one fixed-size HID feature report.
+    ///
+    /// # Errors
+    ///
+    /// Returns the transport's error when the feature operation fails.
+    fn send_feature_report(&mut self, report: &OutputReport<N>) -> Result<(), Self::Error>;
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -169,14 +221,57 @@ pub fn write_exact<const N: usize, W: OutputWriter<N>>(
     Ok(())
 }
 
+/// Sends one feature report through the platform HID transport.
+///
+/// # Errors
+///
+/// Returns the transport's feature-report error.
+pub fn send_feature<const N: usize, W: FeatureWriter<N>>(
+    writer: &mut W,
+    report: &OutputReport<N>,
+) -> Result<(), W::Error> {
+    writer.send_feature_report(report)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn output_report_is_zero_padded_and_fixed_size() {
+        assert_eq!(OutputReport::from_array([4, 5]).as_bytes(), &[4, 5]);
         let report = OutputReport::<8>::zero_padded(&[1, 2, 3]).unwrap();
         assert_eq!(report.as_bytes(), &[1, 2, 3, 0, 0, 0, 0, 0]);
         assert!(OutputReport::<2>::zero_padded(&[1, 2, 3]).is_err());
+    }
+
+    #[test]
+    fn optional_hid_fields_match_like_native_detector_variants() {
+        let endpoint = HidEndpointInfo::new(
+            Arc::from(&b"match-test"[..]),
+            0x1234,
+            0x5678,
+            3,
+            0xFF00,
+            2,
+            None,
+            None,
+            None,
+        );
+        let product_only = HidDeviceMatch {
+            vendor_id: 0x1234,
+            product_id: 0x5678,
+            interface_number: None,
+            usage_page: None,
+            usage: None,
+        };
+        assert!(product_only.matches(&endpoint));
+        assert!(
+            !HidDeviceMatch {
+                usage: Some(1),
+                ..product_only
+            }
+            .matches(&endpoint)
+        );
     }
 }

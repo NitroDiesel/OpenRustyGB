@@ -73,6 +73,7 @@ pub fn description() -> ControllerDescription {
             value: 0x00,
             color_mode: ModeColorMode::PerLed,
             speed: None,
+            brightness: None,
         }],
         zone_names: vec!["Mouse".into()],
         led_names: vec!["LED 1".into()],

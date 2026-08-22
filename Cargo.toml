@@ -9,6 +9,7 @@ members = [
     "crates/drivers/gamesir-nova-lite-2",
     "crates/drivers/faustus-keyboard",
     "crates/drivers/lexip-np93-alpha",
+    "crates/drivers/n5312a-mouse",
     "crates/openrustygb-app",
     "xtask",
 ]

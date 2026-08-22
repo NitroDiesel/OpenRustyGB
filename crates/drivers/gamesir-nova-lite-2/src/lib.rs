@@ -77,6 +77,7 @@ pub fn description() -> ControllerDescription {
             value: 0xFFFF,
             color_mode: ModeColorMode::PerLed,
             speed: None,
+            brightness: None,
         }],
         zone_names: vec!["Controller".into()],
         led_names: vec!["Main LED".into()],

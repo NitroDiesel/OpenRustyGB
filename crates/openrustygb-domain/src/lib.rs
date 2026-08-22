@@ -144,6 +144,7 @@ impl ControllerCapabilities {
     pub const DIRECT_COLOR: Self = Self(1 << 0);
     pub const PER_LED_COLOR: Self = Self(1 << 1);
     pub const EFFECTS: Self = Self(1 << 2);
+    pub const BRIGHTNESS: Self = Self(1 << 3);
 
     #[must_use]
     pub const fn union(self, other: Self) -> Self {
@@ -174,6 +175,7 @@ pub struct ModeDescription {
     pub value: u32,
     pub color_mode: ModeColorMode,
     pub speed: Option<SpeedRange>,
+    pub brightness: Option<BrightnessRange>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -184,6 +186,13 @@ pub enum ModeColorMode {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct SpeedRange {
+    pub min: u8,
+    pub max: u8,
+    pub current: u8,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct BrightnessRange {
     pub min: u8,
     pub max: u8,
     pub current: u8,

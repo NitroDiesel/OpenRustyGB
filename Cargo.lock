@@ -85,6 +85,7 @@ dependencies = [
  "openrustygb-driver-gamesir-nova-lite-2",
  "openrustygb-driver-hyperx-pulsefire-haste2",
  "openrustygb-driver-lexip-np93-alpha",
+ "openrustygb-driver-n5312a-mouse",
  "openrustygb-runtime",
  "openrustygb-transport-hid",
 ]
@@ -122,6 +123,14 @@ dependencies = [
 
 [[package]]
 name = "openrustygb-driver-lexip-np93-alpha"
+version = "0.0.1"
+dependencies = [
+ "openrustygb-domain",
+ "openrustygb-driver-api",
+]
+
+[[package]]
+name = "openrustygb-driver-n5312a-mouse"
 version = "0.0.1"
 dependencies = [
  "openrustygb-domain",
