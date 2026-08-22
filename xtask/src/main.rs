@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 const PINNED_CONTROLLER_FAMILIES: usize = 197;
 const PINNED_DETECTOR_SOURCES: usize = 224;
 const PORTED_FAMILIES: &[(&str, &str)] = &[
+    ("DreamCheekyController", "dream-cheeky-webmail-notifier"),
     ("GameSirController", "gamesir-nova-lite-2"),
     ("FaustusController", "faustus-keyboard"),
     ("LexipMouseController", "lexip-np93-alpha"),
@@ -15,6 +16,7 @@ const PORTED_FAMILIES: &[(&str, &str)] = &[
     ("PatriotViperMouseController", "patriot-viper-v550"),
 ];
 const PORTED_DETECTOR_SOURCES: &[&str] = &[
+    "Controllers/DreamCheekyController/DreamCheekyControllerDetect.cpp",
     "Controllers/GameSirController/GameSirControllerDetect.cpp",
     "Controllers/LexipMouseController/LexipMouseControllerDetect.cpp",
     "Controllers/N5312AController/N5312AControllerDetect.cpp",

@@ -81,6 +81,7 @@ version = "0.0.1"
 dependencies = [
  "openrustygb-domain",
  "openrustygb-driver-api",
+ "openrustygb-driver-dream-cheeky-webmail-notifier",
  "openrustygb-driver-faustus-keyboard",
  "openrustygb-driver-gamesir-nova-lite-2",
  "openrustygb-driver-hyperx-pulsefire-haste2",
@@ -98,6 +99,14 @@ version = "0.0.1"
 [[package]]
 name = "openrustygb-driver-api"
 version = "0.0.1"
+
+[[package]]
+name = "openrustygb-driver-dream-cheeky-webmail-notifier"
+version = "0.0.1"
+dependencies = [
+ "openrustygb-domain",
+ "openrustygb-driver-api",
+]
 
 [[package]]
 name = "openrustygb-driver-faustus-keyboard"

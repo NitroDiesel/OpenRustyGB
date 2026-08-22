@@ -11,6 +11,7 @@ members = [
     "crates/drivers/lexip-np93-alpha",
     "crates/drivers/n5312a-mouse",
     "crates/drivers/patriot-viper-v550",
+    "crates/drivers/dream-cheeky-webmail-notifier",
     "crates/openrustygb-app",
     "xtask",
 ]

@@ -77,3 +77,18 @@ device completes its live test.
 Physical Viper V550 hardware was not present for this contraction. The family
 remains release-blocked by the global hardware-evidence policy until a matching
 device completes its live test.
+
+## DreamCheekyController
+
+- Rust package: `openrustygb-driver-dream-cheeky-webmail-notifier`
+- Device: Dream Cheeky Webmail Notifier
+- Match: VID `1D34`, PID `0004`; the native detector accepts any interface and usage
+- Preserved model: accessory with Direct mode value `0`, one LED zone, and one LED
+- Preserved initialization: four byte-exact 9-byte output reports in their original order
+- Preserved output: one 9-byte color report with each 8-bit channel shifted to `0..63` and input `255` mapped to device maximum `64`
+- Verification: flexible-match tests, initialization goldens, scaling boundary and packet tests, short-write rejection, model-shape test, executable read-only probe, workspace Clippy and tests
+- Deleted native files: `DreamCheekyController.cpp`, `DreamCheekyController.h`, `DreamCheekyControllerDetect.cpp`, `RGBController_DreamCheeky.cpp`, `RGBController_DreamCheeky.h`
+
+Physical Dream Cheeky hardware was not present for this contraction. The family
+remains release-blocked by the global hardware-evidence policy until a matching
+device completes its live test.
