@@ -8,6 +8,7 @@ members = [
     "crates/drivers/hyperx-pulsefire-haste2",
     "crates/drivers/gamesir-nova-lite-2",
     "crates/drivers/faustus-keyboard",
+    "crates/drivers/lexip-np93-alpha",
     "crates/openrustygb-app",
     "xtask",
 ]

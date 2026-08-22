@@ -12,6 +12,7 @@ openrustygb-driver-api = { path = "../openrustygb-driver-api" }
 openrustygb-driver-faustus-keyboard = { path = "../drivers/faustus-keyboard" }
 openrustygb-driver-gamesir-nova-lite-2 = { path = "../drivers/gamesir-nova-lite-2" }
 openrustygb-driver-hyperx-pulsefire-haste2 = { path = "../drivers/hyperx-pulsefire-haste2" }
+openrustygb-driver-lexip-np93-alpha = { path = "../drivers/lexip-np93-alpha" }
 openrustygb-runtime = { path = "../openrustygb-runtime" }
 openrustygb-transport-hid = { path = "../openrustygb-transport-hid" }
 

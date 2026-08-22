@@ -18,6 +18,10 @@ use openrustygb_driver_gamesir_nova_lite_2::{
 use openrustygb_driver_hyperx_pulsefire_haste2::{
     MATCH, OUTPUT_REPORT_LEN, WheelColorTransaction, matches,
 };
+use openrustygb_driver_lexip_np93_alpha::{
+    DirectColorTransaction as LexipColorTransaction, MATCH as LEXIP_MATCH,
+    OUTPUT_REPORT_LEN as LEXIP_REPORT_LEN, matches as matches_lexip,
+};
 use openrustygb_runtime::{CommandOutcome, ControllerActor, ControllerBackend};
 use openrustygb_transport_hid::{HidInventory, HidOutput, HidTransportError};
 
@@ -27,6 +31,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         [] => probe(),
         [command] if command == "probe-haste2" => probe(),
         [command] if command == "probe-gamesir" => probe_gamesir(),
+        [command] if command == "probe-lexip" => probe_lexip(),
         [command] if command == "probe-faustus" => {
             probe_faustus();
             Ok(())
@@ -41,6 +46,11 @@ fn main() -> Result<(), Box<dyn Error>> {
         {
             set_gamesir_color(parse_rgb(color)?)
         }
+        [command, confirmation, color]
+            if command == "set-lexip-color" && confirmation == "--confirm-reversible-write" =>
+        {
+            set_lexip_color(parse_rgb(color)?)
+        }
         [command, confirmation, mode, color]
             if command == "set-faustus-mode" && confirmation == "--confirm-reversible-write" =>
         {
@@ -49,15 +59,41 @@ fn main() -> Result<(), Box<dyn Error>> {
         _ => {
             eprintln!(
                 "Usage:\n  openrustygb probe-haste2\n  openrustygb probe-gamesir\n  \
+                 openrustygb probe-lexip\n  \
                  openrustygb probe-faustus\n  \
                  openrustygb set-haste2-color --confirm-reversible-write RRGGBB\n  \
                  openrustygb set-gamesir-color --confirm-reversible-write RRGGBB\n  \
+                 openrustygb set-lexip-color --confirm-reversible-write RRGGBB\n  \
                  openrustygb set-faustus-mode --confirm-reversible-write \
                  <static|breathing|color-cycle|strobe> RRGGBB"
             );
             Ok(())
         }
     }
+}
+
+fn probe_lexip() -> Result<(), Box<dyn Error>> {
+    let endpoints = HidInventory::enumerate()?;
+    let exact: Vec<_> = endpoints
+        .iter()
+        .filter(|endpoint| matches_lexip(endpoint))
+        .collect();
+    if exact.is_empty() {
+        println!("No exact Lexip NP93 Alpha lighting endpoint found.");
+    } else {
+        for endpoint in exact {
+            println!(
+                "Found exact Lexip NP93 Alpha endpoint: {:04X}:{:04X}, interface {}, usage {:04X}:{:04X}",
+                endpoint.vendor_id,
+                endpoint.product_id,
+                endpoint.interface_number,
+                endpoint.usage_page,
+                endpoint.usage
+            );
+        }
+    }
+    println!("Probe completed without opening a device or writing a report.");
+    Ok(())
 }
 
 fn probe_faustus() {
@@ -188,6 +224,35 @@ fn set_gamesir_color(color: Rgb8) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+fn set_lexip_color(color: Rgb8) -> Result<(), Box<dyn Error>> {
+    let endpoints = HidInventory::enumerate()?;
+    let mut exact = endpoints.into_iter().filter(matches_lexip);
+    let endpoint = exact
+        .next()
+        .ok_or("exact Lexip NP93 Alpha lighting endpoint not found")?;
+    if exact.next().is_some() {
+        return Err("more than one exact Lexip endpoint found; refusing to choose".into());
+    }
+
+    let output = HidOutput::<LEXIP_REPORT_LEN>::open_exact(&endpoint, LEXIP_MATCH)?;
+    let target = ControllerRef {
+        id: ControllerId::new(NonZeroU64::new(3).expect("three is non-zero")),
+        incarnation: Incarnation::new(NonZeroU32::new(1).expect("one is non-zero")),
+    };
+    let actor = ControllerActor::start(target, LexipBackend { output }, 4)?;
+    let outcome = actor.submit_whole_color(target, color)?.wait()?;
+    actor.shutdown()?;
+    match outcome {
+        CommandOutcome::Applied { .. } => {}
+        CommandOutcome::Failed { error, .. } => return Err(error.into()),
+        CommandOutcome::Superseded { .. } => {
+            return Err("one-shot color command was unexpectedly superseded".into());
+        }
+    }
+    println!("Applied one reversible Lexip direct-color transaction.");
+    Ok(())
+}
+
 #[derive(Debug)]
 struct Haste2Backend {
     output: HidOutput<OUTPUT_REPORT_LEN>,
@@ -261,6 +326,48 @@ impl ControllerBackend for GameSirBackend {
             .map_err(GameSirBackendError::Serialization)?
             .apply(&mut self.output)
             .map_err(GameSirBackendError::Output)
+    }
+
+    fn apply_barrier(&mut self, barrier: Self::Barrier) -> Result<(), Self::Error> {
+        match barrier {}
+    }
+
+    fn shutdown(&mut self) -> Result<(), Self::Error> {
+        Ok(())
+    }
+}
+
+#[derive(Debug)]
+struct LexipBackend {
+    output: HidOutput<LEXIP_REPORT_LEN>,
+}
+
+#[derive(Debug)]
+enum LexipBackendError {
+    Serialization(PrefixTooLong),
+    Output(ExactWriteError<HidTransportError>),
+}
+
+impl fmt::Display for LexipBackendError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Serialization(error) => write!(f, "could not serialize Lexip color: {error}"),
+            Self::Output(error) => write!(f, "could not apply Lexip color: {error}"),
+        }
+    }
+}
+
+impl Error for LexipBackendError {}
+
+impl ControllerBackend for LexipBackend {
+    type Barrier = std::convert::Infallible;
+    type Error = LexipBackendError;
+
+    fn apply_whole_color(&mut self, color: Rgb8) -> Result<(), Self::Error> {
+        LexipColorTransaction::new(color)
+            .map_err(LexipBackendError::Serialization)?
+            .apply(&mut self.output)
+            .map_err(LexipBackendError::Output)
     }
 
     fn apply_barrier(&mut self, barrier: Self::Barrier) -> Result<(), Self::Error> {

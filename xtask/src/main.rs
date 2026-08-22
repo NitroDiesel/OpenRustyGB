@@ -10,9 +10,12 @@ const PINNED_DETECTOR_SOURCES: usize = 224;
 const PORTED_FAMILIES: &[(&str, &str)] = &[
     ("GameSirController", "gamesir-nova-lite-2"),
     ("FaustusController", "faustus-keyboard"),
+    ("LexipMouseController", "lexip-np93-alpha"),
 ];
-const PORTED_DETECTOR_SOURCES: &[&str] =
-    &["Controllers/GameSirController/GameSirControllerDetect.cpp"];
+const PORTED_DETECTOR_SOURCES: &[&str] = &[
+    "Controllers/GameSirController/GameSirControllerDetect.cpp",
+    "Controllers/LexipMouseController/LexipMouseControllerDetect.cpp",
+];
 
 fn main() -> Result<(), Box<dyn Error>> {
     let arguments: Vec<String> = env::args().skip(1).collect();

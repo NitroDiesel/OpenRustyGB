@@ -33,3 +33,17 @@ device completes its live test.
 Physical Faustus hardware and its Linux sysfs interface were not present for
 this contraction. The family remains release-blocked by the global
 hardware-evidence policy until a matching device completes its live test.
+
+## LexipMouseController
+
+- Rust package: `openrustygb-driver-lexip-np93-alpha`
+- Device: Lexip NP93 Alpha gaming mouse
+- Exact match: VID `04D8`, PID `FD0A`, interface `0`, usage page `0001`, usage `0002`
+- Preserved model: mouse, Direct mode value `0`, one Mouse zone, one LED named LED 1, per-LED direct color
+- Preserved output: one 64-byte HID report beginning `00 24 01 RR GG BB 00 64 80`
+- Verification: exact-match rejection tests, packet golden, short-write rejection, model-shape test, executable read-only probe, workspace Clippy and tests
+- Deleted native files: `LexipMouseController.cpp`, `LexipMouseController.h`, `LexipMouseControllerDetect.cpp`, `RGBController_LexipMouse.cpp`, `RGBController_LexipMouse.h`
+
+Physical Lexip hardware was not present for this contraction. The family
+remains release-blocked by the global hardware-evidence policy until a matching
+device completes its live test.
