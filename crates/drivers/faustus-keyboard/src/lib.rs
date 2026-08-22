@@ -120,9 +120,12 @@ pub fn description() -> ControllerDescription {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::atomic::{AtomicU64, Ordering};
     use std::time::{SystemTime, UNIX_EPOCH};
 
     use super::*;
+
+    static NEXT_FIXTURE: AtomicU64 = AtomicU64::new(0);
 
     struct Fixture {
         root: PathBuf,
@@ -134,8 +137,9 @@ mod tests {
                 .duration_since(UNIX_EPOCH)
                 .unwrap()
                 .as_nanos();
+            let sequence = NEXT_FIXTURE.fetch_add(1, Ordering::Relaxed);
             let root = std::env::temp_dir().join(format!(
-                "openrustygb-faustus-{}-{unique}",
+                "openrustygb-faustus-{}-{unique}-{sequence}",
                 std::process::id()
             ));
             fs::create_dir(&root).unwrap();
