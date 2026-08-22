@@ -135,3 +135,18 @@ device completes its live test.
 Physical ThingM hardware was not present for this contraction. The family
 remains release-blocked by the global hardware-evidence policy until a matching
 device completes its live test.
+
+## MSI3ZoneController
+
+- Rust package: `openrustygb-driver-msi-3-zone-keyboard`
+- Device: MSI/SteelSeries 3-Zone laptop keyboard
+- Match: VID `1770`, PID `FF00`; the native detector accepts any interface and usage
+- Preserved model: laptop with Direct mode value `0`, a three-LED Keyboard zone, a one-LED Aux zone, and the original four LED names
+- Preserved output: seven 8-byte feature reports with prefix `01 02 40`, zone IDs `1..7`, RGB, and suffix `EC`
+- Preserved ordering: keyboard Left, Middle, Right, then Aux; native report IDs `4..7` all reuse the Aux color
+- Verification: flexible-match test, packet and Aux-reuse goldens, seven-report ordering test, model-shape test, executable read-only probe, workspace Clippy and tests
+- Deleted native files: `MSI3ZoneController.cpp`, `MSI3ZoneController.h`, `MSI3ZoneControllerDetect.cpp`, `RGBController_MSI3Zone.cpp`, `RGBController_MSI3Zone.h`
+
+Physical MSI 3-Zone hardware was not present for this contraction. The family
+remains release-blocked by the global hardware-evidence policy until a matching
+device completes its live test.

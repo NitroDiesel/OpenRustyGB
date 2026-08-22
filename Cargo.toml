@@ -15,6 +15,7 @@ members = [
     "crates/drivers/nvidia-esa-xps-730x",
     "crates/drivers/madcatz-cyborg-light",
     "crates/drivers/thingm-blink1-mk2",
+    "crates/drivers/msi-3-zone-keyboard",
     "crates/openrustygb-app",
     "xtask",
 ]

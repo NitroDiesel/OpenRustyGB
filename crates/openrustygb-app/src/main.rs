@@ -31,6 +31,10 @@ use openrustygb_driver_madcatz_cyborg_light::{
     IntensityTransaction as MadCatzIntensity, MATCH as MADCATZ_MATCH,
     OPEN_REPORT_LEN as MADCATZ_REPORT_LEN, matches as matches_madcatz,
 };
+use openrustygb_driver_msi_3_zone_keyboard::{
+    FEATURE_REPORT_LEN as MSI_REPORT_LEN, MATCH as MSI_MATCH,
+    PerLedColorTransaction as MsiColorTransaction, matches as matches_msi,
+};
 use openrustygb_driver_n5312a_mouse::{
     ColorTransaction as N5312ColorTransaction, FEATURE_REPORT_LEN as N5312_REPORT_LEN,
     Initialization as N5312Initialization, InvalidModeSettings, MATCH as N5312_MATCH,
@@ -61,6 +65,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         [command] if command == "probe-gamesir" => probe_gamesir(),
         [command] if command == "probe-lexip" => probe_lexip(),
         [command] if command == "probe-madcatz" => probe_madcatz(),
+        [command] if command == "probe-msi-3-zone" => probe_msi(),
         [command] if command == "probe-n5312" => probe_n5312(),
         [command] if command == "probe-nvidia-esa" => probe_nvidia_esa(),
         [command] if command == "probe-viper-v550" => probe_viper(),
@@ -134,6 +139,16 @@ fn main() -> Result<(), Box<dyn Error>> {
                 parse_u32_decimal(speed, "speed")?,
             )
         }
+        [command, confirmation, left, middle, right, aux]
+            if command == "set-msi-3-zone" && confirmation == "--confirm-reversible-write" =>
+        {
+            set_msi_colors([
+                parse_rgb(left)?,
+                parse_rgb(middle)?,
+                parse_rgb(right)?,
+                parse_rgb(aux)?,
+            ])
+        }
         _ => {
             print_usage();
             Ok(())
@@ -147,6 +162,7 @@ fn print_usage() {
          openrustygb probe-gamesir\n  \
          openrustygb probe-lexip\n  \
          openrustygb probe-madcatz\n  \
+         openrustygb probe-msi-3-zone\n  \
          openrustygb probe-n5312\n  \
          openrustygb probe-nvidia-esa\n  \
          openrustygb probe-viper-v550\n  \
@@ -157,6 +173,8 @@ fn print_usage() {
          openrustygb set-gamesir-color --confirm-reversible-write RRGGBB\n  \
          openrustygb set-lexip-color --confirm-reversible-write RRGGBB\n  \
          openrustygb set-madcatz-color --confirm-reversible-write RRGGBB <brightness>\n  \
+         openrustygb set-msi-3-zone --confirm-reversible-write \
+         <LEFT-RRGGBB> <MIDDLE-RRGGBB> <RIGHT-RRGGBB> <AUX-RRGGBB>\n  \
          openrustygb set-viper-v550-color --confirm-reversible-write RRGGBB\n  \
          openrustygb set-nvidia-esa-color --confirm-reversible-write RRGGBB\n  \
          openrustygb set-thingm-blink --confirm-reversible-write \
@@ -166,6 +184,30 @@ fn print_usage() {
          openrustygb set-faustus-mode --confirm-reversible-write \
          <static|breathing|color-cycle|strobe> RRGGBB"
     );
+}
+
+fn probe_msi() -> Result<(), Box<dyn Error>> {
+    let endpoints = HidInventory::enumerate()?;
+    let exact: Vec<_> = endpoints
+        .iter()
+        .filter(|endpoint| matches_msi(endpoint))
+        .collect();
+    if exact.is_empty() {
+        println!("No MSI 3-Zone keyboard endpoint found.");
+    } else {
+        for endpoint in exact {
+            println!(
+                "Found MSI 3-Zone endpoint: {:04X}:{:04X}, interface {}, usage {:04X}:{:04X}",
+                endpoint.vendor_id,
+                endpoint.product_id,
+                endpoint.interface_number,
+                endpoint.usage_page,
+                endpoint.usage
+            );
+        }
+    }
+    println!("Probe completed without opening a device or writing a report.");
+    Ok(())
 }
 
 fn probe_thingm() -> Result<(), Box<dyn Error>> {
@@ -696,6 +738,37 @@ fn set_thingm_mode(mode: BlinkMode, colors: [Rgb8; 2], speed: u32) -> Result<(),
     Ok(())
 }
 
+fn set_msi_colors(colors: [Rgb8; 4]) -> Result<(), Box<dyn Error>> {
+    let endpoints = HidInventory::enumerate()?;
+    let mut exact = endpoints.into_iter().filter(matches_msi);
+    let endpoint = exact
+        .next()
+        .ok_or("MSI 3-Zone keyboard endpoint not found")?;
+    if exact.next().is_some() {
+        return Err("more than one MSI 3-Zone endpoint found; refusing to choose".into());
+    }
+
+    let output = HidOutput::<MSI_REPORT_LEN>::open_matching(&endpoint, MSI_MATCH)?;
+    let target = ControllerRef {
+        id: ControllerId::new(NonZeroU64::new(10).expect("ten is non-zero")),
+        incarnation: Incarnation::new(NonZeroU32::new(1).expect("one is non-zero")),
+    };
+    let actor = ControllerActor::start(target, MsiBackend { output }, 4)?;
+    let outcome = actor
+        .submit_barrier(target, MsiCommand { colors })?
+        .wait()?;
+    actor.shutdown()?;
+    match outcome {
+        CommandOutcome::Applied { .. } => {}
+        CommandOutcome::Failed { error, .. } => return Err(error.into()),
+        CommandOutcome::Superseded { .. } => {
+            return Err("color command was unexpectedly superseded".into());
+        }
+    }
+    println!("Applied one reversible MSI 3-Zone color transaction.");
+    Ok(())
+}
+
 #[derive(Debug)]
 struct Haste2Backend {
     output: HidOutput<OUTPUT_REPORT_LEN>,
@@ -980,6 +1053,33 @@ struct ThingMCommand {
 #[derive(Debug)]
 struct ThingMBackend {
     output: HidOutput<THINGM_REPORT_LEN>,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct MsiCommand {
+    colors: [Rgb8; 4],
+}
+
+#[derive(Debug)]
+struct MsiBackend {
+    output: HidOutput<MSI_REPORT_LEN>,
+}
+
+impl ControllerBackend for MsiBackend {
+    type Barrier = MsiCommand;
+    type Error = HidTransportError;
+
+    fn apply_whole_color(&mut self, color: Rgb8) -> Result<(), Self::Error> {
+        MsiColorTransaction::new([color; 4]).apply(&mut self.output)
+    }
+
+    fn apply_barrier(&mut self, command: Self::Barrier) -> Result<(), Self::Error> {
+        MsiColorTransaction::new(command.colors).apply(&mut self.output)
+    }
+
+    fn shutdown(&mut self) -> Result<(), Self::Error> {
+        Ok(())
+    }
 }
 
 impl ControllerBackend for ThingMBackend {
