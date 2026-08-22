@@ -12,11 +12,13 @@ const PORTED_FAMILIES: &[(&str, &str)] = &[
     ("FaustusController", "faustus-keyboard"),
     ("LexipMouseController", "lexip-np93-alpha"),
     ("N5312AController", "n5312a-mouse"),
+    ("PatriotViperMouseController", "patriot-viper-v550"),
 ];
 const PORTED_DETECTOR_SOURCES: &[&str] = &[
     "Controllers/GameSirController/GameSirControllerDetect.cpp",
     "Controllers/LexipMouseController/LexipMouseControllerDetect.cpp",
     "Controllers/N5312AController/N5312AControllerDetect.cpp",
+    "Controllers/PatriotViperMouseController/PatriotViperMouseControllerDetect.cpp",
 ];
 
 fn main() -> Result<(), Box<dyn Error>> {

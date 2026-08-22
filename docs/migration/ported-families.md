@@ -62,3 +62,18 @@ device completes its live test.
 Physical N5312A hardware was not present for this contraction. The family
 remains release-blocked by the global hardware-evidence policy until a matching
 device completes its live test.
+
+## PatriotViperMouseController
+
+- Rust package: `openrustygb-driver-patriot-viper-v550`
+- Device: Patriot Viper V550 mouse
+- Exact match: VID `0C45`, PID `7E18`, interface `2`, usage page `FF18`, usage `0001`
+- Preserved model: mouse with Direct mode value `1`, Left and Right three-LED zones, and one Mousewheel LED
+- Preserved initialization: the original 64-byte feature report sent when the controller opens
+- Preserved output: seven 64-byte feature reports in LED order with `01 13 II FF RR GG BB` and the original XOR parity adjustment in byte 63
+- Verification: exact-match rejection tests, initialization golden, per-LED packet and checksum tests, seven-report ordering test, model-shape test, executable read-only probe, workspace Clippy and tests
+- Deleted native files: `PatriotViperMouseController.cpp`, `PatriotViperMouseController.h`, `PatriotViperMouseControllerDetect.cpp`, `RGBController_PatriotViperMouse.cpp`, `RGBController_PatriotViperMouse.h`
+
+Physical Viper V550 hardware was not present for this contraction. The family
+remains release-blocked by the global hardware-evidence policy until a matching
+device completes its live test.

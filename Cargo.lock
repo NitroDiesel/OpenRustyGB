@@ -86,6 +86,7 @@ dependencies = [
  "openrustygb-driver-hyperx-pulsefire-haste2",
  "openrustygb-driver-lexip-np93-alpha",
  "openrustygb-driver-n5312a-mouse",
+ "openrustygb-driver-patriot-viper-v550",
  "openrustygb-runtime",
  "openrustygb-transport-hid",
 ]
@@ -131,6 +132,14 @@ dependencies = [
 
 [[package]]
 name = "openrustygb-driver-n5312a-mouse"
+version = "0.0.1"
+dependencies = [
+ "openrustygb-domain",
+ "openrustygb-driver-api",
+]
+
+[[package]]
+name = "openrustygb-driver-patriot-viper-v550"
 version = "0.0.1"
 dependencies = [
  "openrustygb-domain",

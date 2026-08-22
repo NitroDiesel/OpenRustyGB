@@ -27,6 +27,11 @@ use openrustygb_driver_n5312a_mouse::{
     Initialization as N5312Initialization, InvalidModeSettings, MATCH as N5312_MATCH,
     ModeTransaction as N5312ModeTransaction, N5312Mode, matches as matches_n5312,
 };
+use openrustygb_driver_patriot_viper_v550::{
+    FEATURE_REPORT_LEN as VIPER_REPORT_LEN, Initialization as ViperInitialization,
+    MATCH as VIPER_MATCH, PerLedColorTransaction as ViperColorTransaction,
+    matches as matches_viper,
+};
 use openrustygb_runtime::{CommandOutcome, ControllerActor, ControllerBackend};
 use openrustygb_transport_hid::{HidInventory, HidOutput, HidTransportError};
 
@@ -38,6 +43,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         [command] if command == "probe-gamesir" => probe_gamesir(),
         [command] if command == "probe-lexip" => probe_lexip(),
         [command] if command == "probe-n5312" => probe_n5312(),
+        [command] if command == "probe-viper-v550" => probe_viper(),
         [command] if command == "probe-faustus" => {
             probe_faustus();
             Ok(())
@@ -56,6 +62,12 @@ fn main() -> Result<(), Box<dyn Error>> {
             if command == "set-lexip-color" && confirmation == "--confirm-reversible-write" =>
         {
             set_lexip_color(parse_rgb(color)?)
+        }
+        [command, confirmation, color]
+            if command == "set-viper-v550-color"
+                && confirmation == "--confirm-reversible-write" =>
+        {
+            set_viper_color(parse_rgb(color)?)
         }
         [command, confirmation, mode, color]
             if command == "set-faustus-mode" && confirmation == "--confirm-reversible-write" =>
@@ -77,10 +89,12 @@ fn main() -> Result<(), Box<dyn Error>> {
                 "Usage:\n  openrustygb probe-haste2\n  openrustygb probe-gamesir\n  \
                  openrustygb probe-lexip\n  \
                  openrustygb probe-n5312\n  \
+                 openrustygb probe-viper-v550\n  \
                  openrustygb probe-faustus\n  \
                  openrustygb set-haste2-color --confirm-reversible-write RRGGBB\n  \
                  openrustygb set-gamesir-color --confirm-reversible-write RRGGBB\n  \
                  openrustygb set-lexip-color --confirm-reversible-write RRGGBB\n  \
+                 openrustygb set-viper-v550-color --confirm-reversible-write RRGGBB\n  \
                  openrustygb set-n5312-mode --confirm-reversible-write \
                  <direct|breathing|single-breath|off> RRGGBB <brightness> <speed>\n  \
                  openrustygb set-faustus-mode --confirm-reversible-write \
@@ -89,6 +103,30 @@ fn main() -> Result<(), Box<dyn Error>> {
             Ok(())
         }
     }
+}
+
+fn probe_viper() -> Result<(), Box<dyn Error>> {
+    let endpoints = HidInventory::enumerate()?;
+    let exact: Vec<_> = endpoints
+        .iter()
+        .filter(|endpoint| matches_viper(endpoint))
+        .collect();
+    if exact.is_empty() {
+        println!("No exact Patriot Viper V550 lighting endpoint found.");
+    } else {
+        for endpoint in exact {
+            println!(
+                "Found exact Patriot Viper V550 endpoint: {:04X}:{:04X}, interface {}, usage {:04X}:{:04X}",
+                endpoint.vendor_id,
+                endpoint.product_id,
+                endpoint.interface_number,
+                endpoint.usage_page,
+                endpoint.usage
+            );
+        }
+    }
+    println!("Probe completed without opening a device or writing a report.");
+    Ok(())
 }
 
 fn probe_n5312() -> Result<(), Box<dyn Error>> {
@@ -341,6 +379,36 @@ fn set_n5312_mode(
     Ok(())
 }
 
+fn set_viper_color(color: Rgb8) -> Result<(), Box<dyn Error>> {
+    let endpoints = HidInventory::enumerate()?;
+    let mut exact = endpoints.into_iter().filter(matches_viper);
+    let endpoint = exact
+        .next()
+        .ok_or("exact Patriot Viper V550 lighting endpoint not found")?;
+    if exact.next().is_some() {
+        return Err("more than one exact Viper V550 endpoint found; refusing to choose".into());
+    }
+
+    let mut output = HidOutput::<VIPER_REPORT_LEN>::open_exact(&endpoint, VIPER_MATCH)?;
+    ViperInitialization::new().apply(&mut output)?;
+    let target = ControllerRef {
+        id: ControllerId::new(NonZeroU64::new(5).expect("five is non-zero")),
+        incarnation: Incarnation::new(NonZeroU32::new(1).expect("one is non-zero")),
+    };
+    let actor = ControllerActor::start(target, ViperBackend { output }, 4)?;
+    let outcome = actor.submit_whole_color(target, color)?.wait()?;
+    actor.shutdown()?;
+    match outcome {
+        CommandOutcome::Applied { .. } => {}
+        CommandOutcome::Failed { error, .. } => return Err(error.into()),
+        CommandOutcome::Superseded { .. } => {
+            return Err("one-shot color command was unexpectedly superseded".into());
+        }
+    }
+    println!("Applied one reversible Viper V550 seven-LED color transaction.");
+    Ok(())
+}
+
 #[derive(Debug)]
 struct Haste2Backend {
     output: HidOutput<OUTPUT_REPORT_LEN>,
@@ -524,6 +592,28 @@ impl ControllerBackend for N5312Backend {
         .map_err(N5312BackendError::Settings)?
         .apply(&mut self.output)
         .map_err(N5312BackendError::Output)
+    }
+
+    fn shutdown(&mut self) -> Result<(), Self::Error> {
+        Ok(())
+    }
+}
+
+#[derive(Debug)]
+struct ViperBackend {
+    output: HidOutput<VIPER_REPORT_LEN>,
+}
+
+impl ControllerBackend for ViperBackend {
+    type Barrier = std::convert::Infallible;
+    type Error = HidTransportError;
+
+    fn apply_whole_color(&mut self, color: Rgb8) -> Result<(), Self::Error> {
+        ViperColorTransaction::new([color; 7]).apply(&mut self.output)
+    }
+
+    fn apply_barrier(&mut self, barrier: Self::Barrier) -> Result<(), Self::Error> {
+        match barrier {}
     }
 
     fn shutdown(&mut self) -> Result<(), Self::Error> {

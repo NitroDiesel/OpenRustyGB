@@ -10,6 +10,7 @@ members = [
     "crates/drivers/faustus-keyboard",
     "crates/drivers/lexip-np93-alpha",
     "crates/drivers/n5312a-mouse",
+    "crates/drivers/patriot-viper-v550",
     "crates/openrustygb-app",
     "xtask",
 ]
