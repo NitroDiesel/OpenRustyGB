@@ -16,6 +16,7 @@ const PORTED_FAMILIES: &[(&str, &str)] = &[
     ("MSI3ZoneController", "msi-3-zone-keyboard"),
     ("N5312AController", "n5312a-mouse"),
     ("NvidiaESAController", "nvidia-esa-xps-730x"),
+    ("NZXTMouseController", "nzxt-lift-mouse"),
     ("PatriotViperMouseController", "patriot-viper-v550"),
     ("ThingMController", "thingm-blink1-mk2"),
 ];
@@ -27,6 +28,7 @@ const PORTED_DETECTOR_SOURCES: &[&str] = &[
     "Controllers/MSI3ZoneController/MSI3ZoneControllerDetect.cpp",
     "Controllers/N5312AController/N5312AControllerDetect.cpp",
     "Controllers/NvidiaESAController/NvidiaESAControllerDetect.cpp",
+    "Controllers/NZXTMouseController/NZXTMouseControllerDetect.cpp",
     "Controllers/PatriotViperMouseController/PatriotViperMouseControllerDetect.cpp",
     "Controllers/ThingMController/ThingMControllerDetect.cpp",
 ];

@@ -150,3 +150,18 @@ device completes its live test.
 Physical MSI 3-Zone hardware was not present for this contraction. The family
 remains release-blocked by the global hardware-evidence policy until a matching
 device completes its live test.
+
+## NZXTMouseController
+
+- Rust package: `openrustygb-driver-nzxt-lift-mouse`
+- Device: NZXT Lift mouse
+- Exact match: VID `1E71`, PID `2100`, interface `0`, usage page `FFCA`, usage `0001`
+- Preserved model: mouse with Direct mode value `FFFF`, Left and Right three-LED zones, and six original LED names
+- Preserved firmware handshake: exact 64-byte `43 81 00 01` request, input filtering until response `43 86`, and version bytes at offsets `3..5`
+- Preserved output: one 64-byte `43 AE` direct report with the native LED order `2, 1, 0, 3, 4, 5` and color offsets `25, 29, 33, 37, 41, 45`
+- Verification: exact-match rejection tests, firmware request and response-filtering golden, direct packet mapping golden, model-shape test, executable read-only probe, workspace Clippy and tests
+- Deleted native files: `NZXTMouseController.cpp`, `NZXTMouseController.h`, `NZXTMouseControllerDetect.cpp`, `RGBController_NZXTMouse.cpp`, `RGBController_NZXTMouse.h`
+
+Physical NZXT Lift hardware was not present for this contraction. The family
+remains release-blocked by the global hardware-evidence policy until a matching
+device completes its live test.

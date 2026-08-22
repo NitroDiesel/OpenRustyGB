@@ -177,6 +177,17 @@ pub trait FeatureWriter<const N: usize> {
     fn send_feature_report(&mut self, report: &OutputReport<N>) -> Result<(), Self::Error>;
 }
 
+pub trait InputReader<const N: usize> {
+    type Error: std::error::Error + Send + Sync + 'static;
+
+    /// Reads one HID input report into the caller's fixed-size buffer.
+    ///
+    /// # Errors
+    ///
+    /// Returns the transport's error when the input operation fails.
+    fn read_input(&mut self, report: &mut [u8; N]) -> Result<usize, Self::Error>;
+}
+
 #[derive(Debug, Eq, PartialEq)]
 pub enum ExactWriteError<E> {
     Transport(E),

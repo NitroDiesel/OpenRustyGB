@@ -90,6 +90,7 @@ dependencies = [
  "openrustygb-driver-msi-3-zone-keyboard",
  "openrustygb-driver-n5312a-mouse",
  "openrustygb-driver-nvidia-esa-xps-730x",
+ "openrustygb-driver-nzxt-lift-mouse",
  "openrustygb-driver-patriot-viper-v550",
  "openrustygb-driver-thingm-blink1-mk2",
  "openrustygb-runtime",
@@ -169,6 +170,14 @@ dependencies = [
 
 [[package]]
 name = "openrustygb-driver-nvidia-esa-xps-730x"
+version = "0.0.1"
+dependencies = [
+ "openrustygb-domain",
+ "openrustygb-driver-api",
+]
+
+[[package]]
+name = "openrustygb-driver-nzxt-lift-mouse"
 version = "0.0.1"
 dependencies = [
  "openrustygb-domain",

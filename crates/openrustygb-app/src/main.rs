@@ -44,6 +44,11 @@ use openrustygb_driver_nvidia_esa_xps_730x::{
     AllZonesTransaction as NvidiaEsaColorTransaction, MATCH as NVIDIA_ESA_MATCH,
     OUTPUT_REPORT_LEN as NVIDIA_ESA_REPORT_LEN, matches as matches_nvidia_esa,
 };
+use openrustygb_driver_nzxt_lift_mouse::{
+    FirmwareHandshake as NzxtFirmwareHandshake, MATCH as NZXT_MATCH,
+    PerLedColorTransaction as NzxtColorTransaction, REPORT_LEN as NZXT_REPORT_LEN,
+    matches as matches_nzxt,
+};
 use openrustygb_driver_patriot_viper_v550::{
     FEATURE_REPORT_LEN as VIPER_REPORT_LEN, Initialization as ViperInitialization,
     MATCH as VIPER_MATCH, PerLedColorTransaction as ViperColorTransaction,
@@ -58,42 +63,84 @@ use openrustygb_transport_hid::{HidInventory, HidOutput, HidTransportError};
 
 fn main() -> Result<(), Box<dyn Error>> {
     let args: Vec<String> = env::args().skip(1).collect();
-    match args.as_slice() {
-        [] => probe(),
-        [command] if command == "probe-haste2" => probe(),
-        [command] if command == "probe-dream-cheeky" => probe_dream(),
-        [command] if command == "probe-gamesir" => probe_gamesir(),
-        [command] if command == "probe-lexip" => probe_lexip(),
-        [command] if command == "probe-madcatz" => probe_madcatz(),
-        [command] if command == "probe-msi-3-zone" => probe_msi(),
-        [command] if command == "probe-n5312" => probe_n5312(),
-        [command] if command == "probe-nvidia-esa" => probe_nvidia_esa(),
-        [command] if command == "probe-viper-v550" => probe_viper(),
-        [command] if command == "probe-thingm-blink" => probe_thingm(),
+    if let Some(result) = dispatch_probe(&args) {
+        return result;
+    }
+    if dispatch_write(&args)? {
+        return Ok(());
+    }
+    print_usage();
+    Ok(())
+}
+
+fn dispatch_probe(args: &[String]) -> Option<Result<(), Box<dyn Error>>> {
+    match args {
+        [] => Some(probe()),
+        [command] if command == "probe-haste2" => Some(probe()),
+        [command] if command == "probe-dream-cheeky" => Some(probe_dream()),
+        [command] if command == "probe-gamesir" => Some(probe_gamesir()),
+        [command] if command == "probe-lexip" => Some(probe_lexip()),
+        [command] if command == "probe-madcatz" => Some(probe_madcatz()),
+        [command] if command == "probe-msi-3-zone" => Some(probe_msi()),
+        [command] if command == "probe-n5312" => Some(probe_n5312()),
+        [command] if command == "probe-nvidia-esa" => Some(probe_nvidia_esa()),
+        [command] if command == "probe-nzxt-lift" => Some(probe_nzxt()),
+        [command] if command == "probe-viper-v550" => Some(probe_viper()),
+        [command] if command == "probe-thingm-blink" => Some(probe_thingm()),
         [command] if command == "probe-faustus" => {
             probe_faustus();
-            Ok(())
+            Some(Ok(()))
         }
+        _ => None,
+    }
+}
+
+fn probe_nzxt() -> Result<(), Box<dyn Error>> {
+    let endpoints = HidInventory::enumerate()?;
+    let exact: Vec<_> = endpoints
+        .iter()
+        .filter(|endpoint| matches_nzxt(endpoint))
+        .collect();
+    if exact.is_empty() {
+        println!("No exact NZXT Lift lighting endpoint found.");
+    } else {
+        for endpoint in exact {
+            println!(
+                "Found exact NZXT Lift endpoint: {:04X}:{:04X}, interface {}, usage {:04X}:{:04X}",
+                endpoint.vendor_id,
+                endpoint.product_id,
+                endpoint.interface_number,
+                endpoint.usage_page,
+                endpoint.usage
+            );
+        }
+    }
+    println!("Probe completed without opening a device or writing a report.");
+    Ok(())
+}
+
+fn dispatch_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
+    match args {
         [command, confirmation, color]
             if command == "set-haste2-color" && confirmation == "--confirm-reversible-write" =>
         {
-            set_color(parse_rgb(color)?)
+            set_color(parse_rgb(color)?)?;
         }
         [command, confirmation, color]
             if command == "set-dream-cheeky-color"
                 && confirmation == "--confirm-reversible-write" =>
         {
-            set_dream_color(parse_rgb(color)?)
+            set_dream_color(parse_rgb(color)?)?;
         }
         [command, confirmation, color]
             if command == "set-gamesir-color" && confirmation == "--confirm-reversible-write" =>
         {
-            set_gamesir_color(parse_rgb(color)?)
+            set_gamesir_color(parse_rgb(color)?)?;
         }
         [command, confirmation, color]
             if command == "set-lexip-color" && confirmation == "--confirm-reversible-write" =>
         {
-            set_lexip_color(parse_rgb(color)?)
+            set_lexip_color(parse_rgb(color)?)?;
         }
         [command, confirmation, color, brightness]
             if command == "set-madcatz-color" && confirmation == "--confirm-reversible-write" =>
@@ -101,24 +148,24 @@ fn main() -> Result<(), Box<dyn Error>> {
             set_madcatz_color(
                 parse_rgb(color)?,
                 parse_u8_decimal(brightness, "brightness")?,
-            )
+            )?;
         }
         [command, confirmation, color]
             if command == "set-viper-v550-color"
                 && confirmation == "--confirm-reversible-write" =>
         {
-            set_viper_color(parse_rgb(color)?)
+            set_viper_color(parse_rgb(color)?)?;
         }
         [command, confirmation, color]
             if command == "set-nvidia-esa-color"
                 && confirmation == "--confirm-reversible-write" =>
         {
-            set_nvidia_esa_color(parse_rgb(color)?)
+            set_nvidia_esa_color(parse_rgb(color)?)?;
         }
         [command, confirmation, mode, color]
             if command == "set-faustus-mode" && confirmation == "--confirm-reversible-write" =>
         {
-            set_faustus_mode(parse_faustus_mode(mode)?, parse_rgb(color)?)
+            set_faustus_mode(parse_faustus_mode(mode)?, parse_rgb(color)?)?;
         }
         [command, confirmation, mode, color, brightness, speed]
             if command == "set-n5312-mode" && confirmation == "--confirm-reversible-write" =>
@@ -128,7 +175,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                 parse_rgb(color)?,
                 parse_u8_decimal(brightness, "brightness")?,
                 parse_u8_decimal(speed, "speed")?,
-            )
+            )?;
         }
         [command, confirmation, mode, led_a, led_b, speed]
             if command == "set-thingm-blink" && confirmation == "--confirm-reversible-write" =>
@@ -137,7 +184,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                 parse_thingm_mode(mode)?,
                 [parse_rgb(led_a)?, parse_rgb(led_b)?],
                 parse_u32_decimal(speed, "speed")?,
-            )
+            )?;
         }
         [command, confirmation, left, middle, right, aux]
             if command == "set-msi-3-zone" && confirmation == "--confirm-reversible-write" =>
@@ -147,13 +194,30 @@ fn main() -> Result<(), Box<dyn Error>> {
                 parse_rgb(middle)?,
                 parse_rgb(right)?,
                 parse_rgb(aux)?,
-            ])
+            ])?;
         }
-        _ => {
-            print_usage();
-            Ok(())
+        [
+            command,
+            confirmation,
+            left_0,
+            left_1,
+            left_2,
+            right_0,
+            right_1,
+            right_2,
+        ] if command == "set-nzxt-lift" && confirmation == "--confirm-reversible-write" => {
+            set_nzxt_colors([
+                parse_rgb(left_0)?,
+                parse_rgb(left_1)?,
+                parse_rgb(left_2)?,
+                parse_rgb(right_0)?,
+                parse_rgb(right_1)?,
+                parse_rgb(right_2)?,
+            ])?;
         }
+        _ => return Ok(false),
     }
+    Ok(true)
 }
 
 fn print_usage() {
@@ -165,6 +229,7 @@ fn print_usage() {
          openrustygb probe-msi-3-zone\n  \
          openrustygb probe-n5312\n  \
          openrustygb probe-nvidia-esa\n  \
+         openrustygb probe-nzxt-lift\n  \
          openrustygb probe-viper-v550\n  \
          openrustygb probe-thingm-blink\n  \
          openrustygb probe-faustus\n  \
@@ -177,6 +242,8 @@ fn print_usage() {
          <LEFT-RRGGBB> <MIDDLE-RRGGBB> <RIGHT-RRGGBB> <AUX-RRGGBB>\n  \
          openrustygb set-viper-v550-color --confirm-reversible-write RRGGBB\n  \
          openrustygb set-nvidia-esa-color --confirm-reversible-write RRGGBB\n  \
+         openrustygb set-nzxt-lift --confirm-reversible-write \
+         <LEFT-0> <LEFT-1> <LEFT-2> <RIGHT-0> <RIGHT-1> <RIGHT-2>\n  \
          openrustygb set-thingm-blink --confirm-reversible-write \
          <off|direct|fade> <LED-A-RRGGBB> <LED-B-RRGGBB> <speed>\n  \
          openrustygb set-n5312-mode --confirm-reversible-write \
@@ -769,6 +836,38 @@ fn set_msi_colors(colors: [Rgb8; 4]) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+fn set_nzxt_colors(colors: [Rgb8; 6]) -> Result<(), Box<dyn Error>> {
+    let endpoints = HidInventory::enumerate()?;
+    let mut exact = endpoints.into_iter().filter(matches_nzxt);
+    let endpoint = exact
+        .next()
+        .ok_or("exact NZXT Lift lighting endpoint not found")?;
+    if exact.next().is_some() {
+        return Err("more than one exact NZXT Lift endpoint found; refusing to choose".into());
+    }
+
+    let mut output = HidOutput::<NZXT_REPORT_LEN>::open_matching(&endpoint, NZXT_MATCH)?;
+    let firmware = NzxtFirmwareHandshake::new().apply(&mut output)?;
+    let target = ControllerRef {
+        id: ControllerId::new(NonZeroU64::new(11).expect("eleven is non-zero")),
+        incarnation: Incarnation::new(NonZeroU32::new(1).expect("one is non-zero")),
+    };
+    let actor = ControllerActor::start(target, NzxtBackend { output }, 4)?;
+    let outcome = actor
+        .submit_barrier(target, NzxtCommand { colors })?
+        .wait()?;
+    actor.shutdown()?;
+    match outcome {
+        CommandOutcome::Applied { .. } => {}
+        CommandOutcome::Failed { error, .. } => return Err(error.into()),
+        CommandOutcome::Superseded { .. } => {
+            return Err("color command was unexpectedly superseded".into());
+        }
+    }
+    println!("Applied one reversible NZXT Lift color transaction using firmware {firmware}.");
+    Ok(())
+}
+
 #[derive(Debug)]
 struct Haste2Backend {
     output: HidOutput<OUTPUT_REPORT_LEN>,
@@ -1063,6 +1162,33 @@ struct MsiCommand {
 #[derive(Debug)]
 struct MsiBackend {
     output: HidOutput<MSI_REPORT_LEN>,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct NzxtCommand {
+    colors: [Rgb8; 6],
+}
+
+#[derive(Debug)]
+struct NzxtBackend {
+    output: HidOutput<NZXT_REPORT_LEN>,
+}
+
+impl ControllerBackend for NzxtBackend {
+    type Barrier = NzxtCommand;
+    type Error = ExactWriteError<HidTransportError>;
+
+    fn apply_whole_color(&mut self, color: Rgb8) -> Result<(), Self::Error> {
+        NzxtColorTransaction::new([color; 6]).apply(&mut self.output)
+    }
+
+    fn apply_barrier(&mut self, command: Self::Barrier) -> Result<(), Self::Error> {
+        NzxtColorTransaction::new(command.colors).apply(&mut self.output)
+    }
+
+    fn shutdown(&mut self) -> Result<(), Self::Error> {
+        Ok(())
+    }
 }
 
 impl ControllerBackend for MsiBackend {

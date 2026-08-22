@@ -18,6 +18,7 @@ openrustygb-driver-madcatz-cyborg-light = { path = "../drivers/madcatz-cyborg-li
 openrustygb-driver-msi-3-zone-keyboard = { path = "../drivers/msi-3-zone-keyboard" }
 openrustygb-driver-n5312a-mouse = { path = "../drivers/n5312a-mouse" }
 openrustygb-driver-nvidia-esa-xps-730x = { path = "../drivers/nvidia-esa-xps-730x" }
+openrustygb-driver-nzxt-lift-mouse = { path = "../drivers/nzxt-lift-mouse" }
 openrustygb-driver-patriot-viper-v550 = { path = "../drivers/patriot-viper-v550" }
 openrustygb-driver-thingm-blink1-mk2 = { path = "../drivers/thingm-blink1-mk2" }
 openrustygb-runtime = { path = "../openrustygb-runtime" }
