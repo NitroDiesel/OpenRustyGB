@@ -2,14 +2,16 @@
 
 OpenRustyGB is an in-progress, all-Rust reimplementation of OpenRGB, pinned to
 upstream commit `8121ee29f46d58f90a56348eb5bf7a64f52f923b`. The repository currently
-contains the verified Rust foundation and an exact, output-only HyperX
-Pulsefire Haste 2 lighting driver. It is not yet a feature-parity replacement.
+contains the verified Rust foundation and its first hardware vertical slice.
+It is not yet a feature-parity replacement.
 
 The original C++/Qt source remains in the tree as a migration reference while
 the checked port inventory is completed. It is not linked into the Rust
 binary. There are no supported installers or parity release yet. Run
 `cargo xtask inventory --require-parity` to check the release-blocking driver
-gate.
+gate. The final contraction removes the entire native reference tree. Run
+`cargo xtask source-audit --require-rust-only` to enforce that no C, C++,
+Objective-C, headers, Qt, CMake, or qmake files remain.
 
 See [PRODUCT.md](PRODUCT.md),
 [the accepted architecture](docs/architecture/ARCHITECTURE.md), and

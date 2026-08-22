@@ -36,3 +36,6 @@ jobs:
 
       - name: Audit pinned driver inventory
         run: cargo xtask inventory
+
+      - name: Report native migration debt
+        run: cargo xtask source-audit

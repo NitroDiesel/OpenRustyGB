@@ -13,7 +13,16 @@ fn main() -> Result<(), Box<dyn Error>> {
     match arguments.as_slice() {
         [command] if command == "inventory" => inventory(false),
         [command, flag] if command == "inventory" && flag == "--require-parity" => inventory(true),
-        _ => Err("usage: cargo xtask inventory [--require-parity]".into()),
+        [command] if command == "source-audit" => source_audit(false),
+        [command, flag]
+            if command == "source-audit" && flag == "--require-rust-only" =>
+        {
+            source_audit(true)
+        }
+        _ => Err(
+            "usage: cargo xtask inventory [--require-parity]\n       cargo xtask source-audit [--require-rust-only]"
+                .into(),
+        ),
     }
 }
 
@@ -106,15 +115,142 @@ fn rust_driver_packages(root: &Path) -> Result<Vec<PathBuf>, Box<dyn Error>> {
     Ok(packages)
 }
 
+fn source_audit(require_rust_only: bool) -> Result<(), Box<dyn Error>> {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .ok_or("xtask must be located beneath the repository root")?;
+    let mut native_sources = Vec::new();
+    let mut native_build_files = Vec::new();
+    visit_files(root, &mut |path| {
+        if is_native_source(path) {
+            native_sources.push(path.to_path_buf());
+        }
+        if is_native_build_file(path) {
+            native_build_files.push(path.to_path_buf());
+        }
+    })?;
+    native_sources.sort();
+    native_build_files.sort();
+
+    println!(
+        "C/C++/Objective-C source and header files: {}",
+        native_sources.len()
+    );
+    println!(
+        "Native or Qt build-description files: {}",
+        native_build_files.len()
+    );
+    if native_sources.is_empty() && native_build_files.is_empty() {
+        println!("Rust-only source-tree gate: PASS");
+        return Ok(());
+    }
+
+    println!("Rust-only source-tree gate: BLOCKED");
+    if require_rust_only {
+        let examples = native_sources
+            .iter()
+            .chain(&native_build_files)
+            .take(10)
+            .map(|path| {
+                path.strip_prefix(root)
+                    .unwrap_or(path)
+                    .display()
+                    .to_string()
+            })
+            .collect::<Vec<_>>()
+            .join(", ");
+        return Err(format!(
+            "native source remains; release is forbidden. First remaining paths: {examples}"
+        )
+        .into());
+    }
+    Ok(())
+}
+
+fn is_native_source(path: &Path) -> bool {
+    path.extension()
+        .and_then(|extension| extension.to_str())
+        .is_some_and(|extension| {
+            matches!(
+                extension.to_ascii_lowercase().as_str(),
+                "c" | "cc"
+                    | "cpp"
+                    | "cxx"
+                    | "h"
+                    | "hh"
+                    | "hpp"
+                    | "hxx"
+                    | "ipp"
+                    | "inl"
+                    | "m"
+                    | "mm"
+            )
+        })
+}
+
+fn is_native_build_file(path: &Path) -> bool {
+    let file_name = path.file_name().and_then(|name| name.to_str());
+    if file_name.is_some_and(|name| name.eq_ignore_ascii_case("CMakeLists.txt")) {
+        return true;
+    }
+    path.extension()
+        .and_then(|extension| extension.to_str())
+        .is_some_and(|extension| {
+            matches!(
+                extension.to_ascii_lowercase().as_str(),
+                "cmake" | "pro" | "pri" | "qbs" | "qrc" | "ui"
+            )
+        })
+}
+
 fn visit_files(root: &Path, visitor: &mut dyn FnMut(&Path)) -> Result<(), Box<dyn Error>> {
     for entry in fs::read_dir(root)? {
         let entry = entry?;
         let path = entry.path();
         if entry.file_type()?.is_dir() {
+            if entry.file_name() == ".git" || entry.file_name() == "target" {
+                continue;
+            }
             visit_files(&path, visitor)?;
         } else {
             visitor(&path);
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn native_source_classifier_covers_c_cpp_headers_and_objective_c() {
+        for path in [
+            "driver.c",
+            "driver.cpp",
+            "driver.hpp",
+            "driver.inl",
+            "platform.m",
+            "platform.mm",
+        ] {
+            assert!(is_native_source(Path::new(path)), "missed {path}");
+        }
+        assert!(!is_native_source(Path::new("driver.rs")));
+        assert!(!is_native_source(Path::new("README.md")));
+    }
+
+    #[test]
+    fn native_build_classifier_covers_cmake_and_qt() {
+        for path in [
+            "CMakeLists.txt",
+            "package.cmake",
+            "OpenRGB.pro",
+            "shared.pri",
+            "resources.qrc",
+            "dialog.ui",
+        ] {
+            assert!(is_native_build_file(Path::new(path)), "missed {path}");
+        }
+        assert!(!is_native_build_file(Path::new("Cargo.toml")));
+    }
 }
