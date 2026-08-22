@@ -1,0 +1,17 @@
+[package]
+name = "openrustygb"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+openrustygb-domain = { path = "../openrustygb-domain" }
+openrustygb-driver-api = { path = "../openrustygb-driver-api" }
+openrustygb-driver-hyperx-pulsefire-haste2 = { path = "../drivers/hyperx-pulsefire-haste2" }
+openrustygb-runtime = { path = "../openrustygb-runtime" }
+openrustygb-transport-hid = { path = "../openrustygb-transport-hid" }
+
+[lints]
+workspace = true

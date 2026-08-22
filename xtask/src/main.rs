@@ -1,0 +1,120 @@
+#![forbid(unsafe_code)]
+
+use std::env;
+use std::error::Error;
+use std::fs;
+use std::path::{Path, PathBuf};
+
+const PINNED_CONTROLLER_FAMILIES: usize = 197;
+const PINNED_DETECTOR_SOURCES: usize = 224;
+
+fn main() -> Result<(), Box<dyn Error>> {
+    let arguments: Vec<String> = env::args().skip(1).collect();
+    match arguments.as_slice() {
+        [command] if command == "inventory" => inventory(false),
+        [command, flag] if command == "inventory" && flag == "--require-parity" => inventory(true),
+        _ => Err("usage: cargo xtask inventory [--require-parity]".into()),
+    }
+}
+
+fn inventory(require_parity: bool) -> Result<(), Box<dyn Error>> {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .ok_or("xtask must be located beneath the repository root")?;
+    let controllers = root.join("Controllers");
+    let families = immediate_directories(&controllers)?;
+    let detector_sources = detector_sources(&controllers)?;
+    let rust_drivers = rust_driver_packages(&root.join("crates").join("drivers"))?;
+
+    if families.len() != PINNED_CONTROLLER_FAMILIES {
+        return Err(format!(
+            "pinned family inventory drifted: expected {PINNED_CONTROLLER_FAMILIES}, found {}",
+            families.len()
+        )
+        .into());
+    }
+    if detector_sources.len() != PINNED_DETECTOR_SOURCES {
+        return Err(format!(
+            "pinned detector-source inventory drifted: expected {PINNED_DETECTOR_SOURCES}, found {}",
+            detector_sources.len()
+        )
+        .into());
+    }
+
+    println!("Pinned upstream controller families: {}", families.len());
+    println!(
+        "Pinned upstream detector source files: {}",
+        detector_sources.len()
+    );
+    println!(
+        "Rust driver packages currently present: {}",
+        rust_drivers.len()
+    );
+    let progress_tenths = rust_drivers.len() * 1_000 / families.len();
+    println!(
+        "Family-package progress: {}/{} ({}.{:01}%)",
+        rust_drivers.len(),
+        families.len(),
+        progress_tenths / 10,
+        progress_tenths % 10
+    );
+
+    if require_parity && rust_drivers.len() < families.len() {
+        return Err("driver parity gate is not complete; release remains blocked".into());
+    }
+    Ok(())
+}
+
+fn immediate_directories(path: &Path) -> Result<Vec<PathBuf>, Box<dyn Error>> {
+    let mut directories = Vec::new();
+    for entry in fs::read_dir(path)? {
+        let entry = entry?;
+        if entry.file_type()?.is_dir() {
+            directories.push(entry.path());
+        }
+    }
+    directories.sort();
+    Ok(directories)
+}
+
+fn detector_sources(root: &Path) -> Result<Vec<PathBuf>, Box<dyn Error>> {
+    let mut found = Vec::new();
+    visit_files(root, &mut |path| {
+        let is_cpp = path.extension().is_some_and(|extension| extension == "cpp");
+        let has_detect = path
+            .file_stem()
+            .and_then(|stem| stem.to_str())
+            .is_some_and(|stem| stem.contains("Detect"));
+        if is_cpp && has_detect {
+            found.push(path.to_path_buf());
+        }
+    })?;
+    found.sort();
+    Ok(found)
+}
+
+fn rust_driver_packages(root: &Path) -> Result<Vec<PathBuf>, Box<dyn Error>> {
+    if !root.exists() {
+        return Ok(Vec::new());
+    }
+    let mut packages = Vec::new();
+    for directory in immediate_directories(root)? {
+        if directory.join("Cargo.toml").is_file() {
+            packages.push(directory);
+        }
+    }
+    Ok(packages)
+}
+
+fn visit_files(root: &Path, visitor: &mut dyn FnMut(&Path)) -> Result<(), Box<dyn Error>> {
+    for entry in fs::read_dir(root)? {
+        let entry = entry?;
+        let path = entry.path();
+        if entry.file_type()?.is_dir() {
+            visit_files(&path, visitor)?;
+        } else {
+            visitor(&path);
+        }
+    }
+    Ok(())
+}

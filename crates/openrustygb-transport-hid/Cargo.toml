@@ -1,0 +1,22 @@
+[package]
+name = "openrustygb-transport-hid"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+openrustygb-driver-api = { path = "../openrustygb-driver-api" }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+hidapi = { version = "2.6.6", default-features = false, features = ["windows-native"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+hidapi = { version = "2.6.6", default-features = false, features = ["linux-native-basic-udev"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+hidapi = { version = "2.6.6", default-features = false }
+
+[lints]
+workspace = true

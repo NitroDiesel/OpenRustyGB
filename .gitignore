@@ -122,3 +122,6 @@ compile_commands.json
 
 # Generated i18n files
 *.qm
+
+# Rust workspace build output
+/target/
