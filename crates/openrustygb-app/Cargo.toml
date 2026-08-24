@@ -32,6 +32,7 @@ openrustygb-driver-nzxt-lift-mouse = { path = "../drivers/nzxt-lift-mouse" }
 openrustygb-driver-patriot-viper-v550 = { path = "../drivers/patriot-viper-v550" }
 openrustygb-driver-redragon-mice = { path = "../drivers/redragon-mice" }
 openrustygb-driver-sayodevice-e1 = { path = "../drivers/sayodevice-e1" }
+openrustygb-driver-skydimo-sk0902 = { path = "../drivers/skydimo-sk0902" }
 openrustygb-driver-thingm-blink1-mk2 = { path = "../drivers/thingm-blink1-mk2" }
 openrustygb-driver-tecknet-m008 = { path = "../drivers/tecknet-m008" }
 openrustygb-driver-wushi-l50 = { path = "../drivers/wushi-l50" }

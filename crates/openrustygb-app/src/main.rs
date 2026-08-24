@@ -113,6 +113,11 @@ use openrustygb_driver_sayodevice_e1::{
     ModeTransaction as SayoModeTransaction, REPORT_LEN as SAYO_REPORT_LEN,
     SaveTransaction as SayoSaveTransaction, SayoMode, matches as matches_sayo,
 };
+use openrustygb_driver_skydimo_sk0902::{
+    FrameTransaction as SkydimoFrameTransaction, InvalidColorCount as SkydimoInvalidColorCount,
+    LED_COUNT as SKYDIMO_LED_COUNT, MATCH as SKYDIMO_MATCH,
+    OUTPUT_REPORT_LEN as SKYDIMO_REPORT_LEN, matches as matches_skydimo,
+};
 use openrustygb_driver_tecknet_m008::{
     FEATURE_REPORT_LEN as TECKNET_REPORT_LEN, InvalidSpeed as TecknetInvalidSpeed,
     MATCH as TECKNET_MATCH, ModeColorTransaction as TecknetTransaction, TecknetMode,
@@ -155,6 +160,7 @@ fn dispatch_probe(args: &[String]) -> Option<Result<(), Box<dyn Error>>> {
         [command] if command == "probe-dark-project" => Some(probe_dark_project()),
         [command] if command == "probe-stream-deck" => Some(probe_stream_deck()),
         [command] if command == "probe-sayo" => Some(probe_sayo()),
+        [command] if command == "probe-skydimo" => Some(probe_skydimo()),
         [command] if command == "probe-wushi" => Some(probe_wushi()),
         [command] if command == "probe-gamesir" => Some(probe_gamesir()),
         [command] if command == "probe-aorus-m2" => Some(probe_aorus()),
@@ -244,6 +250,30 @@ fn probe_clevo() -> Result<(), Box<dyn Error>> {
                 endpoint.usage_page,
                 endpoint.usage,
                 clevo_firmware_version(endpoint.release_number)
+            );
+        }
+    }
+    println!("Probe completed without opening a device or writing a report.");
+    Ok(())
+}
+
+fn probe_skydimo() -> Result<(), Box<dyn Error>> {
+    let endpoints = HidInventory::enumerate()?;
+    let exact: Vec<_> = endpoints
+        .iter()
+        .filter(|endpoint| matches_skydimo(endpoint))
+        .collect();
+    if exact.is_empty() {
+        println!("No exact Skydimo SK0902 endpoint found.");
+    } else {
+        for endpoint in exact {
+            println!(
+                "Found Skydimo SK0902 endpoint: {:04X}:{:04X}, interface {}, usage {:04X}:{:04X}",
+                endpoint.vendor_id,
+                endpoint.product_id,
+                endpoint.interface_number,
+                endpoint.usage_page,
+                endpoint.usage
             );
         }
     }
@@ -865,7 +895,11 @@ fn dispatch_per_led_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
 
     if !matches!(
         command.as_str(),
-        "set-asus-monitor" | "set-hyperx-mousemat" | "set-dark-project" | "set-stream-deck"
+        "set-asus-monitor"
+            | "set-hyperx-mousemat"
+            | "set-dark-project"
+            | "set-stream-deck"
+            | "set-skydimo"
     ) {
         return Ok(false);
     }
@@ -875,6 +909,7 @@ fn dispatch_per_led_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
         "set-hyperx-mousemat" => set_hyperx_mousemat_colors(colors)?,
         "set-dark-project" => set_dark_project_colors(colors)?,
         "set-stream-deck" => set_stream_deck_colors(colors)?,
+        "set-skydimo" => set_skydimo_colors(colors)?,
         _ => unreachable!("command was checked above"),
     }
     Ok(true)
@@ -891,6 +926,7 @@ fn print_usage() {
          openrustygb probe-dark-project\n  \
          openrustygb probe-stream-deck\n  \
          openrustygb probe-sayo\n  \
+         openrustygb probe-skydimo\n  \
          openrustygb probe-wushi\n  \
          openrustygb probe-gamesir\n  \
          openrustygb probe-hyperx-mousemat\n  \
@@ -932,6 +968,7 @@ fn print_usage() {
          openrustygb set-dream-cheeky-color --confirm-reversible-write RRGGBB\n  \
          openrustygb set-dark-project --confirm-reversible-write <87-RRGGBB-colors>\n  \
          openrustygb set-stream-deck --confirm-reversible-write <15-RRGGBB-colors>\n  \
+         openrustygb set-skydimo --confirm-reversible-write <49-RRGGBB-colors>\n  \
          openrustygb set-sayo --confirm-reversible-write \
          <direct|breathing|wave|switch|blink> RRGGBB <speed> <static|random>\n  \
          openrustygb save-sayo --confirm-persistent-write\n  \
@@ -1954,6 +1991,36 @@ fn set_stream_deck_colors(colors: Vec<Rgb8>) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+fn set_skydimo_colors(colors: Vec<Rgb8>) -> Result<(), Box<dyn Error>> {
+    let endpoints = HidInventory::enumerate()?;
+    let mut exact = endpoints.into_iter().filter(matches_skydimo);
+    let endpoint = exact
+        .next()
+        .ok_or("exact Skydimo SK0902 endpoint not found")?;
+    if exact.next().is_some() {
+        return Err("more than one Skydimo SK0902 endpoint found; refusing to choose".into());
+    }
+    let output = HidOutput::<SKYDIMO_REPORT_LEN>::open_matching(&endpoint, SKYDIMO_MATCH)?;
+    let target = ControllerRef {
+        id: ControllerId::new(NonZeroU64::new(26).expect("twenty-six is non-zero")),
+        incarnation: Incarnation::new(NonZeroU32::new(1).expect("one is non-zero")),
+    };
+    let actor = ControllerActor::start(target, SkydimoBackend { output }, 4)?;
+    let outcome = actor
+        .submit_barrier(target, SkydimoCommand { colors })?
+        .wait()?;
+    actor.shutdown()?;
+    match outcome {
+        CommandOutcome::Applied { .. } => {}
+        CommandOutcome::Failed { error, .. } => return Err(error.into()),
+        CommandOutcome::Superseded { .. } => {
+            return Err("Skydimo color command was unexpectedly superseded".into());
+        }
+    }
+    println!("Applied one reversible Skydimo SK0902 matrix transaction.");
+    Ok(())
+}
+
 fn set_sayo(command: SayoCommand) -> Result<(), Box<dyn Error>> {
     let endpoints = HidInventory::enumerate()?;
     let mut exact = endpoints.into_iter().filter(matches_sayo);
@@ -2628,6 +2695,56 @@ impl ControllerBackend for StreamDeckBackend {
             .map_err(StreamDeckBackendError::Frame)?
             .apply(&mut self.output)
             .map_err(StreamDeckBackendError::Output)
+    }
+
+    fn shutdown(&mut self) -> Result<(), Self::Error> {
+        Ok(())
+    }
+}
+
+#[derive(Clone, Debug)]
+struct SkydimoCommand {
+    colors: Vec<Rgb8>,
+}
+
+#[derive(Debug)]
+struct SkydimoBackend {
+    output: HidOutput<SKYDIMO_REPORT_LEN>,
+}
+
+#[derive(Debug)]
+enum SkydimoBackendError {
+    Settings(SkydimoInvalidColorCount),
+    Output(ExactWriteError<HidTransportError>),
+}
+
+impl fmt::Display for SkydimoBackendError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Settings(error) => write!(f, "invalid Skydimo frame: {error}"),
+            Self::Output(error) => write!(f, "could not apply Skydimo frame: {error}"),
+        }
+    }
+}
+
+impl Error for SkydimoBackendError {}
+
+impl ControllerBackend for SkydimoBackend {
+    type Barrier = SkydimoCommand;
+    type Error = SkydimoBackendError;
+
+    fn apply_whole_color(&mut self, color: Rgb8) -> Result<(), Self::Error> {
+        SkydimoFrameTransaction::new(&[color; SKYDIMO_LED_COUNT])
+            .map_err(SkydimoBackendError::Settings)?
+            .apply(&mut self.output)
+            .map_err(SkydimoBackendError::Output)
+    }
+
+    fn apply_barrier(&mut self, command: Self::Barrier) -> Result<(), Self::Error> {
+        SkydimoFrameTransaction::new(&command.colors)
+            .map_err(SkydimoBackendError::Settings)?
+            .apply(&mut self.output)
+            .map_err(SkydimoBackendError::Output)
     }
 
     fn shutdown(&mut self) -> Result<(), Self::Error> {

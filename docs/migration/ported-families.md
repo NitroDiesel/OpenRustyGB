@@ -386,3 +386,20 @@ a matching device completes its live test.
 Physical CLEVO Lightbar hardware was not present for this contraction. The
 family remains release-blocked by the global hardware-evidence policy until a
 matching device completes its live test.
+
+## SkydimoHIDController
+
+- Rust package: `openrustygb-driver-skydimo-sk0902`
+- Device: Skydimo SK0902 headset stand
+- Match: VID `1A86`, PID `E316`, interface `0`, usage `FF00:0001`
+- Preserved model: 49 individually addressable LEDs in the native serpentine 7x7 Matrix map with one Direct mode
+- Preserved metadata: manufacturer and product strings form the displayed device name, with the same Skydimo/HID Device fallbacks
+- Preserved output: RGB input is converted to GRB, split into 60/60/27-byte chunks starting at LEDs `0`, `20`, and `40`, and sent as exact 64-byte output reports
+- Preserved integrity and commit: each data report carries polynomial-`07` CRC-8 over bytes `0..62`; the final `01 FF FF 31` report carries marker `1E` at byte 60 and intentionally no CRC
+- Safety correction: frame construction requires the controller's exact 49-color topology instead of silently truncating or padding an invalid caller frame; every write is checked for its exact native length
+- Verification: exact endpoint matcher tests, GRB/chunk/start-index/CRC/frame-end packet goldens, serpentine matrix and model-shape tests, executable read-only probe and guarded 49-color command, workspace Clippy and tests
+- Deleted native files: `SkydimoHIDController.cpp`, `SkydimoHIDController.h`, `SkydimoHIDControllerDetect.cpp`, `RGBController_SkydimoHID.cpp`, `RGBController_SkydimoHID.h`
+
+Physical Skydimo SK0902 hardware was not present for this contraction. The
+family remains release-blocked by the global hardware-evidence policy until a
+matching device completes its live test.

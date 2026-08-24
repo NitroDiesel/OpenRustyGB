@@ -31,6 +31,7 @@ members = [
     "crates/drivers/redragon-mice",
     "crates/drivers/gigabyte-aorus-c300-glass",
     "crates/drivers/clevo-lightbar",
+    "crates/drivers/skydimo-sk0902",
     "crates/openrustygb-app",
     "xtask",
 ]
