@@ -21,6 +21,7 @@ members = [
     "crates/drivers/tecknet-m008",
     "crates/drivers/hyperx-mousemat",
     "crates/drivers/lego-dimensions-toypad",
+    "crates/drivers/aoc-amm700-mousemat",
     "crates/openrustygb-app",
     "xtask",
 ]

@@ -7,6 +7,7 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
+openrustygb-driver-aoc-amm700-mousemat = { path = "../drivers/aoc-amm700-mousemat" }
 openrustygb-driver-asus-monitor = { path = "../drivers/asus-monitor" }
 openrustygb-domain = { path = "../openrustygb-domain" }
 openrustygb-driver-api = { path = "../openrustygb-driver-api" }

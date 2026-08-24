@@ -228,3 +228,17 @@ policy until a matching device completes its live test.
 Physical Lego Dimensions Toypad Base hardware was not present for this
 contraction. The family remains release-blocked by the global hardware-evidence
 policy until a matching device completes its live test.
+
+## AOCMousematController
+
+- Rust package: `openrustygb-driver-aoc-amm700-mousemat`
+- Device: AOC AGON AMM700
+- Exact match: VID `3938`, PID `1162`, interface `1`, usage page and usage `FF19`
+- Preserved model: one Mousemat LED; Direct, Spectrum Cycle, Breathing, Flashing, Wave, and Rainbow Wave modes with brightness `0..3`, inverse speed range `3..1`, and direction support
+- Preserved output: exact 32-byte feature report with mode, brightness, speed, direction, RGB, and all native constant bytes; random Breathing and Flashing protocol variants remain selectable
+- Verification: exact matcher rejection tests, direct/effect packet goldens, settings bounds, model-shape test, executable read-only probe and guarded mode command, workspace Clippy and tests
+- Deleted native files: `AOCMousematController.cpp`, `AOCMousematController.h`, `AOCMousematControllerDetect.cpp`, `RGBController_AOCMousemat.cpp`, `RGBController_AOCMousemat.h`
+
+Physical AOC AMM700 hardware was not present for this contraction. The family
+remains release-blocked by the global hardware-evidence policy until a matching
+device completes its live test.

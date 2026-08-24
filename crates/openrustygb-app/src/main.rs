@@ -7,6 +7,11 @@ use std::num::{NonZeroU32, NonZeroU64};
 use std::path::Path;
 
 use openrustygb_domain::{ControllerId, ControllerRef, Incarnation, Rgb8};
+use openrustygb_driver_aoc_amm700_mousemat::{
+    AocMode, Direction as AocDirection, FEATURE_REPORT_LEN as AOC_REPORT_LEN,
+    InvalidSettings as AocInvalidSettings, MATCH as AOC_MATCH,
+    ModeTransaction as AocModeTransaction, matches as matches_aoc,
+};
 use openrustygb_driver_api::{ExactWriteError, PrefixTooLong};
 use openrustygb_driver_asus_monitor::{
     DirectColorTransaction as AsusMonitorColorTransaction,
@@ -97,6 +102,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 fn dispatch_probe(args: &[String]) -> Option<Result<(), Box<dyn Error>>> {
     match args {
         [] => Some(probe()),
+        [command] if command == "probe-aoc-amm700" => Some(probe_aoc()),
         [command] if command == "probe-asus-monitor" => Some(probe_asus_monitor()),
         [command] if command == "probe-haste2" => Some(probe()),
         [command] if command == "probe-dream-cheeky" => Some(probe_dream()),
@@ -118,6 +124,30 @@ fn dispatch_probe(args: &[String]) -> Option<Result<(), Box<dyn Error>>> {
         }
         _ => None,
     }
+}
+
+fn probe_aoc() -> Result<(), Box<dyn Error>> {
+    let endpoints = HidInventory::enumerate()?;
+    let exact: Vec<_> = endpoints
+        .iter()
+        .filter(|endpoint| matches_aoc(endpoint))
+        .collect();
+    if exact.is_empty() {
+        println!("No exact AOC AGON AMM700 lighting endpoint found.");
+    } else {
+        for endpoint in exact {
+            println!(
+                "Found AOC AGON AMM700 endpoint: {:04X}:{:04X}, interface {}, usage {:04X}:{:04X}",
+                endpoint.vendor_id,
+                endpoint.product_id,
+                endpoint.interface_number,
+                endpoint.usage_page,
+                endpoint.usage
+            );
+        }
+    }
+    println!("Probe completed without opening a device or writing a report.");
+    Ok(())
 }
 
 fn probe_nzxt() -> Result<(), Box<dyn Error>> {
@@ -329,6 +359,24 @@ fn dispatch_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
 
 fn dispatch_variable_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
     match args {
+        [
+            command,
+            confirmation,
+            mode,
+            color,
+            brightness,
+            speed,
+            direction,
+        ] if command == "set-aoc-amm700" && confirmation == "--confirm-reversible-write" => {
+            set_aoc_mode(AocCommand {
+                mode: parse_aoc_mode(mode)?,
+                color: parse_rgb(color)?,
+                brightness: parse_u8_decimal(brightness, "brightness")?,
+                speed: parse_u8_decimal(speed, "speed")?,
+                direction: parse_aoc_direction(direction)?,
+            })?;
+            Ok(true)
+        }
         [command, confirmation, mode, color, speed]
             if command == "set-tecknet-m008" && confirmation == "--confirm-reversible-write" =>
         {
@@ -399,7 +447,7 @@ fn dispatch_variable_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
 
 fn print_usage() {
     eprintln!(
-        "Usage:\n  openrustygb probe-asus-monitor\n  openrustygb probe-haste2\n  \
+        "Usage:\n  openrustygb probe-aoc-amm700\n  openrustygb probe-asus-monitor\n  openrustygb probe-haste2\n  \
          openrustygb probe-dream-cheeky\n  \
          openrustygb probe-gamesir\n  \
          openrustygb probe-hyperx-mousemat\n  \
@@ -415,6 +463,9 @@ fn print_usage() {
          openrustygb probe-tecknet-m008\n  \
          openrustygb probe-faustus\n  \
          openrustygb set-asus-monitor --confirm-reversible-write <RRGGBB...>\n  \
+         openrustygb set-aoc-amm700 --confirm-reversible-write \
+         <static|spectrum|breathing|breathing-random|flashing|flashing-random|wave|rainbow-wave> \
+         RRGGBB <brightness> <speed> <cw|ccw>\n  \
          openrustygb set-haste2-color --confirm-reversible-write RRGGBB\n  \
          openrustygb set-hyperx-mousemat --confirm-reversible-write <RRGGBB...>\n  \
          openrustygb set-lego-toypad --confirm-reversible-write direct \
@@ -1202,6 +1253,34 @@ fn set_lego_command(command: LegoCommand) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+fn set_aoc_mode(command: AocCommand) -> Result<(), Box<dyn Error>> {
+    let endpoints = HidInventory::enumerate()?;
+    let mut exact = endpoints.into_iter().filter(matches_aoc);
+    let endpoint = exact
+        .next()
+        .ok_or("exact AOC AGON AMM700 lighting endpoint not found")?;
+    if exact.next().is_some() {
+        return Err("more than one AOC AMM700 endpoint found; refusing to choose".into());
+    }
+    let output = HidOutput::<AOC_REPORT_LEN>::open_matching(&endpoint, AOC_MATCH)?;
+    let target = ControllerRef {
+        id: ControllerId::new(NonZeroU64::new(16).expect("sixteen is non-zero")),
+        incarnation: Incarnation::new(NonZeroU32::new(1).expect("one is non-zero")),
+    };
+    let actor = ControllerActor::start(target, AocBackend { output }, 4)?;
+    let outcome = actor.submit_barrier(target, command)?.wait()?;
+    actor.shutdown()?;
+    match outcome {
+        CommandOutcome::Applied { .. } => {}
+        CommandOutcome::Failed { error, .. } => return Err(error.into()),
+        CommandOutcome::Superseded { .. } => {
+            return Err("AOC mode command was unexpectedly superseded".into());
+        }
+    }
+    println!("Applied one reversible AOC AGON AMM700 mode transaction.");
+    Ok(())
+}
+
 #[derive(Debug)]
 struct Haste2Backend {
     output: HidOutput<OUTPUT_REPORT_LEN>,
@@ -1640,6 +1719,65 @@ impl ControllerBackend for HyperXMousematBackend {
 }
 
 #[derive(Clone, Copy, Debug)]
+struct AocCommand {
+    mode: AocMode,
+    color: Rgb8,
+    brightness: u8,
+    speed: u8,
+    direction: AocDirection,
+}
+
+#[derive(Debug)]
+struct AocBackend {
+    output: HidOutput<AOC_REPORT_LEN>,
+}
+
+#[derive(Debug)]
+enum AocBackendError {
+    Settings(AocInvalidSettings),
+    Output(HidTransportError),
+}
+
+impl fmt::Display for AocBackendError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Settings(error) => write!(f, "invalid AOC mode: {error}"),
+            Self::Output(error) => write!(f, "could not apply AOC mode: {error}"),
+        }
+    }
+}
+
+impl Error for AocBackendError {}
+
+impl ControllerBackend for AocBackend {
+    type Barrier = AocCommand;
+    type Error = AocBackendError;
+
+    fn apply_whole_color(&mut self, color: Rgb8) -> Result<(), Self::Error> {
+        AocModeTransaction::direct(color)
+            .apply(&mut self.output)
+            .map_err(AocBackendError::Output)
+    }
+
+    fn apply_barrier(&mut self, command: Self::Barrier) -> Result<(), Self::Error> {
+        AocModeTransaction::new(
+            command.mode,
+            command.color,
+            command.brightness,
+            command.speed,
+            command.direction,
+        )
+        .map_err(AocBackendError::Settings)?
+        .apply(&mut self.output)
+        .map_err(AocBackendError::Output)
+    }
+
+    fn shutdown(&mut self) -> Result<(), Self::Error> {
+        Ok(())
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
 enum LegoCommand {
     Direct([Rgb8; 3]),
     Effect {
@@ -1841,6 +1979,28 @@ fn parse_lego_mode(input: &str) -> Result<ToypadMode, Box<dyn Error>> {
         "flash" => Ok(ToypadMode::Flash),
         "fade" => Ok(ToypadMode::Fade),
         _ => Err("Lego Toy Pad effect must be flash or fade".into()),
+    }
+}
+
+fn parse_aoc_mode(input: &str) -> Result<AocMode, Box<dyn Error>> {
+    match input {
+        "static" => Ok(AocMode::Static),
+        "spectrum" => Ok(AocMode::SpectrumCycle),
+        "breathing" => Ok(AocMode::Breathing),
+        "breathing-random" => Ok(AocMode::BreathingRandom),
+        "flashing" => Ok(AocMode::Flashing),
+        "flashing-random" => Ok(AocMode::FlashingRandom),
+        "wave" => Ok(AocMode::Wave),
+        "rainbow-wave" => Ok(AocMode::RainbowWave),
+        _ => Err("unknown AOC AMM700 mode".into()),
+    }
+}
+
+fn parse_aoc_direction(input: &str) -> Result<AocDirection, Box<dyn Error>> {
+    match input {
+        "cw" => Ok(AocDirection::Clockwise),
+        "ccw" => Ok(AocDirection::CounterClockwise),
+        _ => Err("AOC direction must be cw or ccw".into()),
     }
 }
 
