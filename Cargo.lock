@@ -88,6 +88,7 @@ dependencies = [
  "openrustygb-domain",
  "openrustygb-driver-aoc-amm700-mousemat",
  "openrustygb-driver-api",
+ "openrustygb-driver-areson-mice",
  "openrustygb-driver-asus-monitor",
  "openrustygb-driver-dark-project-kd3b-v2",
  "openrustygb-driver-dream-cheeky-webmail-notifier",
@@ -126,6 +127,14 @@ dependencies = [
 [[package]]
 name = "openrustygb-driver-api"
 version = "0.0.1"
+
+[[package]]
+name = "openrustygb-driver-areson-mice"
+version = "0.0.1"
+dependencies = [
+ "openrustygb-domain",
+ "openrustygb-driver-api",
+]
 
 [[package]]
 name = "openrustygb-driver-asus-monitor"

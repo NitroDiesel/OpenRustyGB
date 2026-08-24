@@ -13,6 +13,10 @@ use openrustygb_driver_aoc_amm700_mousemat::{
     ModeTransaction as AocModeTransaction, matches as matches_aoc,
 };
 use openrustygb_driver_api::{ExactWriteError, PrefixTooLong};
+use openrustygb_driver_areson_mice::{
+    AresonMode, FEATURE_REPORT_LEN as ARESON_REPORT_LEN, InvalidSettings as AresonInvalidSettings,
+    ModeTransaction as AresonModeTransaction, match_model as match_areson,
+};
 use openrustygb_driver_asus_monitor::{
     DirectColorTransaction as AsusMonitorColorTransaction,
     Initialization as AsusMonitorInitialization, InvalidLedCount as AsusMonitorInvalidLedCount,
@@ -119,6 +123,7 @@ fn dispatch_probe(args: &[String]) -> Option<Result<(), Box<dyn Error>>> {
         [] => Some(probe()),
         [command] if command == "probe-aoc-amm700" => Some(probe_aoc()),
         [command] if command == "probe-asus-monitor" => Some(probe_asus_monitor()),
+        [command] if command == "probe-areson" => Some(probe_areson()),
         [command] if command == "probe-haste2" => Some(probe()),
         [command] if command == "probe-dream-cheeky" => Some(probe_dream()),
         [command] if command == "probe-dark-project" => Some(probe_dark_project()),
@@ -156,6 +161,31 @@ fn probe_aorus() -> Result<(), Box<dyn Error>> {
         for endpoint in exact {
             println!(
                 "Found Gigabyte Aorus M2 endpoint: {:04X}:{:04X}, interface {}, usage {:04X}:{:04X}",
+                endpoint.vendor_id,
+                endpoint.product_id,
+                endpoint.interface_number,
+                endpoint.usage_page,
+                endpoint.usage
+            );
+        }
+    }
+    println!("Probe completed without opening a device or writing a report.");
+    Ok(())
+}
+
+fn probe_areson() -> Result<(), Box<dyn Error>> {
+    let endpoints = HidInventory::enumerate()?;
+    let exact: Vec<_> = endpoints
+        .iter()
+        .filter_map(|endpoint| match_areson(endpoint).map(|model| (endpoint, model)))
+        .collect();
+    if exact.is_empty() {
+        println!("No exact supported Areson mouse endpoint found.");
+    } else {
+        for (endpoint, model) in exact {
+            println!(
+                "Found {} endpoint: {:04X}:{:04X}, interface {}, usage {:04X}:{:04X}",
+                model.name,
                 endpoint.vendor_id,
                 endpoint.product_id,
                 endpoint.interface_number,
@@ -363,6 +393,9 @@ fn probe_lego() -> Result<(), Box<dyn Error>> {
 }
 
 fn dispatch_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
+    if dispatch_areson_write(args)? {
+        return Ok(true);
+    }
     if dispatch_variable_write(args)? {
         return Ok(true);
     }
@@ -444,6 +477,22 @@ fn dispatch_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
         }
         _ => return Ok(false),
     }
+    Ok(true)
+}
+
+fn dispatch_areson_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
+    let [command, confirmation, mode, color, brightness, speed] = args else {
+        return Ok(false);
+    };
+    if command != "set-areson" || confirmation != "--confirm-reversible-write" {
+        return Ok(false);
+    }
+    set_areson_mode(AresonCommand {
+        mode: parse_areson_mode(mode)?,
+        color: parse_rgb(color)?,
+        brightness: parse_u8_decimal(brightness, "brightness")?,
+        speed: parse_u8_decimal(speed, "speed")?,
+    })?;
     Ok(true)
 }
 
@@ -566,6 +615,7 @@ fn dispatch_per_led_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
 fn print_usage() {
     eprintln!(
         "Usage:\n  openrustygb probe-aoc-amm700\n  openrustygb probe-aorus-m2\n  openrustygb probe-asus-monitor\n  openrustygb probe-haste2\n  \
+         openrustygb probe-areson\n  \
          openrustygb probe-dream-cheeky\n  \
          openrustygb probe-dark-project\n  \
          openrustygb probe-stream-deck\n  \
@@ -588,6 +638,9 @@ fn print_usage() {
          RRGGBB <brightness> <speed> <cw|ccw>\n  \
          openrustygb set-aorus-m2 --confirm-reversible-write \
          <direct|static|breathing|spectrum|flashing|double-flash|off> \
+         RRGGBB <brightness> <speed>\n  \
+         openrustygb set-areson --confirm-reversible-write \
+         <static|rainbow-wave|breathing|spectrum|single-color-wave|colorful-breathing|off> \
          RRGGBB <brightness> <speed>\n  \
          openrustygb set-haste2-color --confirm-reversible-write RRGGBB\n  \
          openrustygb set-hyperx-mousemat --confirm-reversible-write <RRGGBB...>\n  \
@@ -1434,6 +1487,37 @@ fn set_aorus_mode(command: AorusCommand) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+fn set_areson_mode(command: AresonCommand) -> Result<(), Box<dyn Error>> {
+    let endpoints = HidInventory::enumerate()?;
+    let mut exact = endpoints.into_iter().filter_map(|endpoint| {
+        let model = match_areson(&endpoint)?;
+        Some((endpoint, model))
+    });
+    let (endpoint, model) = exact
+        .next()
+        .ok_or("exact supported Areson mouse endpoint not found")?;
+    if exact.next().is_some() {
+        return Err("more than one supported Areson endpoint found; refusing to choose".into());
+    }
+    let output = HidOutput::<ARESON_REPORT_LEN>::open_matching(&endpoint, model.matcher)?;
+    let target = ControllerRef {
+        id: ControllerId::new(NonZeroU64::new(20).expect("twenty is non-zero")),
+        incarnation: Incarnation::new(NonZeroU32::new(1).expect("one is non-zero")),
+    };
+    let actor = ControllerActor::start(target, AresonBackend { output }, 4)?;
+    let outcome = actor.submit_barrier(target, command)?.wait()?;
+    actor.shutdown()?;
+    match outcome {
+        CommandOutcome::Applied { .. } => {}
+        CommandOutcome::Failed { error, .. } => return Err(error.into()),
+        CommandOutcome::Superseded { .. } => {
+            return Err("Areson mode command was unexpectedly superseded".into());
+        }
+    }
+    println!("Applied one reversible Areson mouse hardware-mode transaction.");
+    Ok(())
+}
+
 fn set_dark_project_colors(colors: Vec<Rgb8>) -> Result<(), Box<dyn Error>> {
     let endpoints = HidInventory::enumerate()?;
     let mut exact = endpoints.into_iter().filter(matches_dark_project);
@@ -1987,6 +2071,64 @@ struct StreamDeckCommand {
     colors: Vec<Rgb8>,
 }
 
+#[derive(Clone, Copy, Debug)]
+struct AresonCommand {
+    mode: AresonMode,
+    color: Rgb8,
+    brightness: u8,
+    speed: u8,
+}
+
+#[derive(Debug)]
+struct AresonBackend {
+    output: HidOutput<ARESON_REPORT_LEN>,
+}
+
+#[derive(Debug)]
+enum AresonBackendError {
+    Settings(AresonInvalidSettings),
+    Output(HidTransportError),
+}
+
+impl fmt::Display for AresonBackendError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Settings(error) => write!(f, "invalid Areson settings: {error}"),
+            Self::Output(error) => write!(f, "could not apply Areson mode: {error}"),
+        }
+    }
+}
+
+impl Error for AresonBackendError {}
+
+impl ControllerBackend for AresonBackend {
+    type Barrier = AresonCommand;
+    type Error = AresonBackendError;
+
+    fn apply_whole_color(&mut self, color: Rgb8) -> Result<(), Self::Error> {
+        AresonModeTransaction::new(AresonMode::Static, color, 10, 1)
+            .map_err(AresonBackendError::Settings)?
+            .apply(&mut self.output)
+            .map_err(AresonBackendError::Output)
+    }
+
+    fn apply_barrier(&mut self, command: Self::Barrier) -> Result<(), Self::Error> {
+        AresonModeTransaction::new(
+            command.mode,
+            command.color,
+            command.brightness,
+            command.speed,
+        )
+        .map_err(AresonBackendError::Settings)?
+        .apply(&mut self.output)
+        .map_err(AresonBackendError::Output)
+    }
+
+    fn shutdown(&mut self) -> Result<(), Self::Error> {
+        Ok(())
+    }
+}
+
 #[derive(Debug)]
 struct StreamDeckBackend {
     output: HidOutput<STREAM_DECK_REPORT_LEN>,
@@ -2383,6 +2525,19 @@ fn parse_aorus_mode(input: &str) -> Result<AorusMode, Box<dyn Error>> {
         "double-flash" => Ok(AorusMode::DoubleFlash),
         "off" => Ok(AorusMode::Off),
         _ => Err("unknown Gigabyte Aorus M2 mode".into()),
+    }
+}
+
+fn parse_areson_mode(input: &str) -> Result<AresonMode, Box<dyn Error>> {
+    match input {
+        "static" => Ok(AresonMode::Static),
+        "rainbow-wave" => Ok(AresonMode::RainbowWave),
+        "breathing" => Ok(AresonMode::Breathing),
+        "spectrum" => Ok(AresonMode::SpectrumCycle),
+        "single-color-wave" => Ok(AresonMode::SingleColorWave),
+        "colorful-breathing" => Ok(AresonMode::ColorfulBreathing),
+        "off" => Ok(AresonMode::Off),
+        _ => Err("unknown Areson mouse mode".into()),
     }
 }
 

@@ -288,3 +288,19 @@ a matching device completes its live test.
 Physical Elgato Stream Deck MK.2 hardware was not present for this contraction.
 The family remains release-blocked by the global hardware-evidence policy until
 a matching device completes its live test.
+
+## AresonController
+
+- Rust package: `openrustygb-driver-areson-mice`
+- Devices: ZET GAMING Edge Air Pro and Elit wired/wireless variants, plus Redragon M914 NIX wired/wireless
+- Exact matches: VID `25A7`; PIDs `FA3F`, `FA40`, `FA48`, `FA49`, `FA7B`, and `FA7C`; interface `1`; usage `FF02:0002`
+- Preserved model: one Mouse LED; Static, Rainbow Wave, Breathing, Spectrum Cycle, Single Color Wave, Colorful Breathing, and Off modes; brightness and speed ranges `1..10`
+- Preserved output: exact 17-byte `08 07` feature report, mode-specific high/low speed tables, ten-level brightness table, wrapping `55` checksum across mode through brightness, and `4A` terminator
+- Preserved mode behavior: modes without user colors encode black, Static ignores speed, and Off encodes black with zero speed and brightness
+- Safety correction: mode-dependent settings are validated before indexing the native one-based tables
+- Verification: all six exact matcher tests, Static/Rainbow/Off packet goldens, speed and brightness bounds, model-shape tests, executable read-only probe and guarded hardware-mode command, workspace Clippy and tests
+- Deleted native files: `AresonController.cpp`, `AresonController.h`, `AresonControllerDetect.cpp`, `RGBController_Areson.cpp`, `RGBController_Areson.h`
+
+Physical supported Areson mouse hardware was not present for this contraction.
+The family remains release-blocked by the global hardware-evidence policy until
+a matching device completes its live test.
