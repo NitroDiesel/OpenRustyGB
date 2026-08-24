@@ -337,3 +337,19 @@ matching device completes its live test.
 Physical JSAUX RGB Docking Station hardware was not present for this
 contraction. The family remains release-blocked by the global hardware-evidence
 policy until a matching device completes its live test.
+
+## RedragonController
+
+- Rust package: `openrustygb-driver-redragon-mice`
+- Devices: Redragon M711 Cobra, M715 Dagger, M716 Inquisitor, M908 Impact, M602 Griffin, M808 Storm, M801 Sniper, M810 Taipan, M987 Reaping, M921 Azzinoth, and M711-FPS-1 Cobra FPS
+- Exact matches: VID `04D9`; PIDs `FC30`, `FC39`, `FC3A`, `FC4D`, `FC38`, `FC5F`, `FC58`, `FA7E`, `FC69`, `FC40`, and `FC62`; interface `2`; usage page `FFA0`; the native detector does not constrain usage
+- Preserved model: one Mouse LED; Static, Wave, Breathing, Rainbow, and Flashing modes, plus the native random-color Breathing variant
+- Preserved lifecycle: opening a device selects profile zero at address `002C` and applies it before accepting lighting commands
+- Preserved output: exact zero-padded 16-byte feature reports with report ID `02`; little-endian addresses; color/mode data at byte eight; and the `F1 02 04` apply report after each change
+- Preserved mode behavior: hardware effects encode the native always-on flag and speed zero; Rainbow exposes no user color while the remaining displayed effects retain per-LED color
+- Verification: all eleven product/interface/usage-page matcher tests, initialization and apply packet goldens, color and hardware-mode packet goldens, model-shape tests, executable read-only probe and guarded hardware-mode command, workspace Clippy and tests
+- Deleted native files: `RedragonControllerDetect.cpp`, `RedragonMouseController.cpp`, `RedragonMouseController.h`, `RGBController_RedragonMouse.cpp`, `RGBController_RedragonMouse.h`
+
+Physical supported Redragon mouse hardware was not present for this contraction.
+The family remains release-blocked by the global hardware-evidence policy until
+a matching device completes its live test.

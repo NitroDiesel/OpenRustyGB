@@ -28,6 +28,7 @@ members = [
     "crates/drivers/areson-mice",
     "crates/drivers/sayodevice-e1",
     "crates/drivers/wushi-l50",
+    "crates/drivers/redragon-mice",
     "crates/openrustygb-app",
     "xtask",
 ]

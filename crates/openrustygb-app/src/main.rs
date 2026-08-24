@@ -94,6 +94,10 @@ use openrustygb_driver_patriot_viper_v550::{
     MATCH as VIPER_MATCH, PerLedColorTransaction as ViperColorTransaction,
     matches as matches_viper,
 };
+use openrustygb_driver_redragon_mice::{
+    FEATURE_REPORT_LEN as REDRAGON_REPORT_LEN, Initialization as RedragonInitialization,
+    ModeTransaction as RedragonModeTransaction, RedragonMode, match_model as match_redragon,
+};
 use openrustygb_driver_sayodevice_e1::{
     ApplyError as SayoApplyError, InvalidSpeed as SayoInvalidSpeed, MATCH as SAYO_MATCH,
     ModeTransaction as SayoModeTransaction, REPORT_LEN as SAYO_REPORT_LEN,
@@ -134,6 +138,7 @@ fn dispatch_probe(args: &[String]) -> Option<Result<(), Box<dyn Error>>> {
         [command] if command == "probe-aoc-amm700" => Some(probe_aoc()),
         [command] if command == "probe-asus-monitor" => Some(probe_asus_monitor()),
         [command] if command == "probe-areson" => Some(probe_areson()),
+        [command] if command == "probe-redragon" => Some(probe_redragon()),
         [command] if command == "probe-haste2" => Some(probe()),
         [command] if command == "probe-dream-cheeky" => Some(probe_dream()),
         [command] if command == "probe-dark-project" => Some(probe_dark_project()),
@@ -193,6 +198,31 @@ fn probe_areson() -> Result<(), Box<dyn Error>> {
         .collect();
     if exact.is_empty() {
         println!("No exact supported Areson mouse endpoint found.");
+    } else {
+        for (endpoint, model) in exact {
+            println!(
+                "Found {} endpoint: {:04X}:{:04X}, interface {}, usage {:04X}:{:04X}",
+                model.name,
+                endpoint.vendor_id,
+                endpoint.product_id,
+                endpoint.interface_number,
+                endpoint.usage_page,
+                endpoint.usage
+            );
+        }
+    }
+    println!("Probe completed without opening a device or writing a report.");
+    Ok(())
+}
+
+fn probe_redragon() -> Result<(), Box<dyn Error>> {
+    let endpoints = HidInventory::enumerate()?;
+    let exact: Vec<_> = endpoints
+        .iter()
+        .filter_map(|endpoint| match_redragon(endpoint).map(|model| (endpoint, model)))
+        .collect();
+    if exact.is_empty() {
+        println!("No exact supported Redragon mouse endpoint found.");
     } else {
         for (endpoint, model) in exact {
             println!(
@@ -462,6 +492,9 @@ fn dispatch_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
     if dispatch_areson_write(args)? {
         return Ok(true);
     }
+    if dispatch_redragon_write(args)? {
+        return Ok(true);
+    }
     if dispatch_variable_write(args)? {
         return Ok(true);
     }
@@ -618,6 +651,20 @@ fn dispatch_areson_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
     Ok(true)
 }
 
+fn dispatch_redragon_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
+    let [command, confirmation, mode, color] = args else {
+        return Ok(false);
+    };
+    if command != "set-redragon" || confirmation != "--confirm-reversible-write" {
+        return Ok(false);
+    }
+    set_redragon_mode(RedragonCommand {
+        mode: parse_redragon_mode(mode)?,
+        color: parse_rgb(color)?,
+    })?;
+    Ok(true)
+}
+
 fn dispatch_variable_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
     if dispatch_per_led_write(args)? {
         return Ok(true);
@@ -738,6 +785,7 @@ fn print_usage() {
     eprintln!(
         "Usage:\n  openrustygb probe-aoc-amm700\n  openrustygb probe-aorus-m2\n  openrustygb probe-asus-monitor\n  openrustygb probe-haste2\n  \
          openrustygb probe-areson\n  \
+         openrustygb probe-redragon\n  \
          openrustygb probe-dream-cheeky\n  \
          openrustygb probe-dark-project\n  \
          openrustygb probe-stream-deck\n  \
@@ -766,6 +814,8 @@ fn print_usage() {
          openrustygb set-areson --confirm-reversible-write \
          <static|rainbow-wave|breathing|spectrum|single-color-wave|colorful-breathing|off> \
          RRGGBB <brightness> <speed>\n  \
+         openrustygb set-redragon --confirm-reversible-write \
+         <static|wave|breathing|breathing-random|rainbow|flashing> RRGGBB\n  \
          openrustygb set-haste2-color --confirm-reversible-write RRGGBB\n  \
          openrustygb set-hyperx-mousemat --confirm-reversible-write <RRGGBB...>\n  \
          openrustygb set-lego-toypad --confirm-reversible-write direct \
@@ -1648,6 +1698,38 @@ fn set_areson_mode(command: AresonCommand) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+fn set_redragon_mode(command: RedragonCommand) -> Result<(), Box<dyn Error>> {
+    let endpoints = HidInventory::enumerate()?;
+    let mut exact = endpoints.into_iter().filter_map(|endpoint| {
+        let model = match_redragon(&endpoint)?;
+        Some((endpoint, model))
+    });
+    let (endpoint, model) = exact
+        .next()
+        .ok_or("exact supported Redragon mouse endpoint not found")?;
+    if exact.next().is_some() {
+        return Err("more than one supported Redragon endpoint found; refusing to choose".into());
+    }
+    let mut output = HidOutput::<REDRAGON_REPORT_LEN>::open_matching(&endpoint, model.matcher)?;
+    RedragonInitialization::new().apply(&mut output)?;
+    let target = ControllerRef {
+        id: ControllerId::new(NonZeroU64::new(23).expect("twenty-three is non-zero")),
+        incarnation: Incarnation::new(NonZeroU32::new(1).expect("one is non-zero")),
+    };
+    let actor = ControllerActor::start(target, RedragonBackend { output }, 4)?;
+    let outcome = actor.submit_barrier(target, command)?.wait()?;
+    actor.shutdown()?;
+    match outcome {
+        CommandOutcome::Applied { .. } => {}
+        CommandOutcome::Failed { error, .. } => return Err(error.into()),
+        CommandOutcome::Superseded { .. } => {
+            return Err("Redragon mode command was unexpectedly superseded".into());
+        }
+    }
+    println!("Applied one reversible Redragon mouse hardware-mode transaction.");
+    Ok(())
+}
+
 fn set_dark_project_colors(colors: Vec<Rgb8>) -> Result<(), Box<dyn Error>> {
     let endpoints = HidInventory::enumerate()?;
     let mut exact = endpoints.into_iter().filter(matches_dark_project);
@@ -2317,6 +2399,34 @@ impl ControllerBackend for AresonBackend {
     }
 }
 
+#[derive(Clone, Copy, Debug)]
+struct RedragonCommand {
+    mode: RedragonMode,
+    color: Rgb8,
+}
+
+#[derive(Debug)]
+struct RedragonBackend {
+    output: HidOutput<REDRAGON_REPORT_LEN>,
+}
+
+impl ControllerBackend for RedragonBackend {
+    type Barrier = RedragonCommand;
+    type Error = HidTransportError;
+
+    fn apply_whole_color(&mut self, color: Rgb8) -> Result<(), Self::Error> {
+        RedragonModeTransaction::new(RedragonMode::Static, color).apply(&mut self.output)
+    }
+
+    fn apply_barrier(&mut self, command: Self::Barrier) -> Result<(), Self::Error> {
+        RedragonModeTransaction::new(command.mode, command.color).apply(&mut self.output)
+    }
+
+    fn shutdown(&mut self) -> Result<(), Self::Error> {
+        Ok(())
+    }
+}
+
 #[derive(Debug)]
 struct StreamDeckBackend {
     output: HidOutput<STREAM_DECK_REPORT_LEN>,
@@ -2858,6 +2968,18 @@ fn parse_areson_mode(input: &str) -> Result<AresonMode, Box<dyn Error>> {
         "colorful-breathing" => Ok(AresonMode::ColorfulBreathing),
         "off" => Ok(AresonMode::Off),
         _ => Err("unknown Areson mouse mode".into()),
+    }
+}
+
+fn parse_redragon_mode(input: &str) -> Result<RedragonMode, Box<dyn Error>> {
+    match input {
+        "static" => Ok(RedragonMode::Static),
+        "wave" => Ok(RedragonMode::Wave),
+        "breathing" => Ok(RedragonMode::Breathing),
+        "breathing-random" => Ok(RedragonMode::RandomBreathing),
+        "rainbow" => Ok(RedragonMode::Rainbow),
+        "flashing" => Ok(RedragonMode::Flashing),
+        _ => Err("unknown Redragon mouse mode".into()),
     }
 }
 
