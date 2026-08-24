@@ -28,6 +28,7 @@ openrustygb-driver-n5312a-mouse = { path = "../drivers/n5312a-mouse" }
 openrustygb-driver-nvidia-esa-xps-730x = { path = "../drivers/nvidia-esa-xps-730x" }
 openrustygb-driver-nzxt-lift-mouse = { path = "../drivers/nzxt-lift-mouse" }
 openrustygb-driver-patriot-viper-v550 = { path = "../drivers/patriot-viper-v550" }
+openrustygb-driver-sayodevice-e1 = { path = "../drivers/sayodevice-e1" }
 openrustygb-driver-thingm-blink1-mk2 = { path = "../drivers/thingm-blink1-mk2" }
 openrustygb-driver-tecknet-m008 = { path = "../drivers/tecknet-m008" }
 openrustygb-runtime = { path = "../openrustygb-runtime" }

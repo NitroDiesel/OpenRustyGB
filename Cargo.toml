@@ -26,6 +26,7 @@ members = [
     "crates/drivers/dark-project-kd3b-v2",
     "crates/drivers/elgato-stream-deck-mk2",
     "crates/drivers/areson-mice",
+    "crates/drivers/sayodevice-e1",
     "crates/openrustygb-app",
     "xtask",
 ]

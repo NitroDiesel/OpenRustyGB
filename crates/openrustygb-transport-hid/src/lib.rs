@@ -7,7 +7,7 @@ use std::sync::Arc;
 use hidapi::{HidApi, HidDevice};
 use openrustygb_driver_api::{
     ExactHidMatch, FeatureWriter, HidDeviceMatch, HidEndpointInfo, InputReader, OutputReport,
-    OutputWriter,
+    OutputWriter, PendingInputReader,
 };
 
 #[derive(Debug)]
@@ -138,5 +138,15 @@ impl<const OPEN_N: usize, const REPORT_N: usize> InputReader<REPORT_N> for HidOu
 
     fn read_input(&mut self, report: &mut [u8; REPORT_N]) -> Result<usize, Self::Error> {
         self.device.read(report).map_err(Into::into)
+    }
+}
+
+impl<const OPEN_N: usize, const REPORT_N: usize> PendingInputReader<REPORT_N>
+    for HidOutput<OPEN_N>
+{
+    type Error = HidTransportError;
+
+    fn read_pending(&mut self, report: &mut [u8; REPORT_N]) -> Result<usize, Self::Error> {
+        self.device.read_timeout(report, 0).map_err(Into::into)
     }
 }

@@ -29,6 +29,7 @@ const PORTED_FAMILIES: &[(&str, &str)] = &[
     ("NvidiaESAController", "nvidia-esa-xps-730x"),
     ("NZXTMouseController", "nzxt-lift-mouse"),
     ("PatriotViperMouseController", "patriot-viper-v550"),
+    ("SayoDeviceController", "sayodevice-e1"),
     ("ThingMController", "thingm-blink1-mk2"),
     ("TecknetController", "tecknet-m008"),
 ];
@@ -50,6 +51,7 @@ const PORTED_DETECTOR_SOURCES: &[&str] = &[
     "Controllers/NvidiaESAController/NvidiaESAControllerDetect.cpp",
     "Controllers/NZXTMouseController/NZXTMouseControllerDetect.cpp",
     "Controllers/PatriotViperMouseController/PatriotViperMouseControllerDetect.cpp",
+    "Controllers/SayoDeviceController/SayoDeviceControllerDetect.cpp",
     "Controllers/ThingMController/ThingMControllerDetect.cpp",
     "Controllers/TecknetController/TecknetControllerDetect.cpp",
 ];

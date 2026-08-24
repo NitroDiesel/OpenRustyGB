@@ -304,3 +304,19 @@ a matching device completes its live test.
 Physical supported Areson mouse hardware was not present for this contraction.
 The family remains release-blocked by the global hardware-evidence policy until
 a matching device completes its live test.
+
+## SayoDeviceController
+
+- Rust package: `openrustygb-driver-sayodevice-e1`
+- Device: SayoDevice E1 knob
+- Match: VID `8089`, PID `0007`, usage `FF11:0002`; the native detector does not constrain interface
+- Preserved model: one Underglow LED; Direct, Breathing, Wave, Switch, and Blink modes; animation speed `0..3`; optional loop-table random color; explicit manual save
+- Preserved output: exact zero-padded 64-byte `21 12` reports, little-endian 16-bit word-sum checksum, 27-byte lighting payload, packed inverse speed/color/mode byte, and six-byte persistent-save payload
+- Preserved lifecycle: every output accepts the Windows report-ID-excluded completion length, rejects shorter writes, and then non-blockingly drains all pending 64-byte input reports
+- Safety correction: the Rust model exposes the intended single LED instead of reproducing the native setup loop's duplicate LED entry; persistent save requires a separate explicit confirmation flag
+- Verification: product/usage matcher tests, Direct/Breathing/save packet goldens, checksum, speed inversion and bounds tests, pending-input drain test, model-shape test, executable read-only probe and guarded mode/save commands, workspace Clippy and tests
+- Deleted native files: `SayoDeviceController.cpp`, `SayoDeviceController.h`, `SayoDeviceControllerDetect.cpp`, `RGBController_SayoDevice.cpp`, `RGBController_SayoDevice.h`
+
+Physical SayoDevice E1 hardware was not present for this contraction. The
+family remains release-blocked by the global hardware-evidence policy until a
+matching device completes its live test.

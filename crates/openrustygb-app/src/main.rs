@@ -94,6 +94,11 @@ use openrustygb_driver_patriot_viper_v550::{
     MATCH as VIPER_MATCH, PerLedColorTransaction as ViperColorTransaction,
     matches as matches_viper,
 };
+use openrustygb_driver_sayodevice_e1::{
+    ApplyError as SayoApplyError, InvalidSpeed as SayoInvalidSpeed, MATCH as SAYO_MATCH,
+    ModeTransaction as SayoModeTransaction, REPORT_LEN as SAYO_REPORT_LEN,
+    SaveTransaction as SayoSaveTransaction, SayoMode, matches as matches_sayo,
+};
 use openrustygb_driver_tecknet_m008::{
     FEATURE_REPORT_LEN as TECKNET_REPORT_LEN, InvalidSpeed as TecknetInvalidSpeed,
     MATCH as TECKNET_MATCH, ModeColorTransaction as TecknetTransaction, TecknetMode,
@@ -128,6 +133,7 @@ fn dispatch_probe(args: &[String]) -> Option<Result<(), Box<dyn Error>>> {
         [command] if command == "probe-dream-cheeky" => Some(probe_dream()),
         [command] if command == "probe-dark-project" => Some(probe_dark_project()),
         [command] if command == "probe-stream-deck" => Some(probe_stream_deck()),
+        [command] if command == "probe-sayo" => Some(probe_sayo()),
         [command] if command == "probe-gamesir" => Some(probe_gamesir()),
         [command] if command == "probe-aorus-m2" => Some(probe_aorus()),
         [command] if command == "probe-hyperx-mousemat" => Some(probe_hyperx_mousemat()),
@@ -234,6 +240,30 @@ fn probe_stream_deck() -> Result<(), Box<dyn Error>> {
         for endpoint in exact {
             println!(
                 "Found Elgato Stream Deck MK.2 endpoint: {:04X}:{:04X}, interface {}, usage {:04X}:{:04X}",
+                endpoint.vendor_id,
+                endpoint.product_id,
+                endpoint.interface_number,
+                endpoint.usage_page,
+                endpoint.usage
+            );
+        }
+    }
+    println!("Probe completed without opening a device or writing a report.");
+    Ok(())
+}
+
+fn probe_sayo() -> Result<(), Box<dyn Error>> {
+    let endpoints = HidInventory::enumerate()?;
+    let exact: Vec<_> = endpoints
+        .iter()
+        .filter(|endpoint| matches_sayo(endpoint))
+        .collect();
+    if exact.is_empty() {
+        println!("No exact SayoDevice E1 endpoint found.");
+    } else {
+        for endpoint in exact {
+            println!(
+                "Found SayoDevice E1 endpoint: {:04X}:{:04X}, interface {}, usage {:04X}:{:04X}",
                 endpoint.vendor_id,
                 endpoint.product_id,
                 endpoint.interface_number,
@@ -393,6 +423,9 @@ fn probe_lego() -> Result<(), Box<dyn Error>> {
 }
 
 fn dispatch_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
+    if dispatch_sayo_write(args)? {
+        return Ok(true);
+    }
     if dispatch_areson_write(args)? {
         return Ok(true);
     }
@@ -474,6 +507,28 @@ fn dispatch_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
                 parse_rgb(right)?,
                 parse_rgb(aux)?,
             ])?;
+        }
+        _ => return Ok(false),
+    }
+    Ok(true)
+}
+
+fn dispatch_sayo_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
+    match args {
+        [command, confirmation]
+            if command == "save-sayo" && confirmation == "--confirm-persistent-write" =>
+        {
+            set_sayo(SayoCommand::Save)?;
+        }
+        [command, confirmation, mode, color, speed, color_behavior]
+            if command == "set-sayo" && confirmation == "--confirm-reversible-write" =>
+        {
+            set_sayo(SayoCommand::Mode {
+                mode: parse_sayo_mode(mode)?,
+                color: parse_rgb(color)?,
+                speed: parse_u8_decimal(speed, "speed")?,
+                random: parse_sayo_random(color_behavior)?,
+            })?;
         }
         _ => return Ok(false),
     }
@@ -619,6 +674,7 @@ fn print_usage() {
          openrustygb probe-dream-cheeky\n  \
          openrustygb probe-dark-project\n  \
          openrustygb probe-stream-deck\n  \
+         openrustygb probe-sayo\n  \
          openrustygb probe-gamesir\n  \
          openrustygb probe-hyperx-mousemat\n  \
          openrustygb probe-lego-toypad\n  \
@@ -651,6 +707,9 @@ fn print_usage() {
          openrustygb set-dream-cheeky-color --confirm-reversible-write RRGGBB\n  \
          openrustygb set-dark-project --confirm-reversible-write <87-RRGGBB-colors>\n  \
          openrustygb set-stream-deck --confirm-reversible-write <15-RRGGBB-colors>\n  \
+         openrustygb set-sayo --confirm-reversible-write \
+         <direct|breathing|wave|switch|blink> RRGGBB <speed> <static|random>\n  \
+         openrustygb save-sayo --confirm-persistent-write\n  \
          openrustygb set-gamesir-color --confirm-reversible-write RRGGBB\n  \
          openrustygb set-lexip-color --confirm-reversible-write RRGGBB\n  \
          openrustygb set-madcatz-color --confirm-reversible-write RRGGBB <brightness>\n  \
@@ -1579,6 +1638,34 @@ fn set_stream_deck_colors(colors: Vec<Rgb8>) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+fn set_sayo(command: SayoCommand) -> Result<(), Box<dyn Error>> {
+    let endpoints = HidInventory::enumerate()?;
+    let mut exact = endpoints.into_iter().filter(matches_sayo);
+    let endpoint = exact
+        .next()
+        .ok_or("exact SayoDevice E1 endpoint not found")?;
+    if exact.next().is_some() {
+        return Err("more than one SayoDevice E1 endpoint found; refusing to choose".into());
+    }
+    let output = HidOutput::<SAYO_REPORT_LEN>::open_matching(&endpoint, SAYO_MATCH)?;
+    let target = ControllerRef {
+        id: ControllerId::new(NonZeroU64::new(21).expect("twenty-one is non-zero")),
+        incarnation: Incarnation::new(NonZeroU32::new(1).expect("one is non-zero")),
+    };
+    let actor = ControllerActor::start(target, SayoBackend { output }, 4)?;
+    let outcome = actor.submit_barrier(target, command)?.wait()?;
+    actor.shutdown()?;
+    match outcome {
+        CommandOutcome::Applied { .. } => {}
+        CommandOutcome::Failed { error, .. } => return Err(error.into()),
+        CommandOutcome::Superseded { .. } => {
+            return Err("SayoDevice command was unexpectedly superseded".into());
+        }
+    }
+    println!("Applied one confirmed SayoDevice E1 transaction.");
+    Ok(())
+}
+
 #[derive(Debug)]
 struct Haste2Backend {
     output: HidOutput<OUTPUT_REPORT_LEN>,
@@ -2175,6 +2262,72 @@ impl ControllerBackend for StreamDeckBackend {
 }
 
 #[derive(Clone, Copy, Debug)]
+enum SayoCommand {
+    Mode {
+        mode: SayoMode,
+        color: Rgb8,
+        speed: u8,
+        random: bool,
+    },
+    Save,
+}
+
+#[derive(Debug)]
+struct SayoBackend {
+    output: HidOutput<SAYO_REPORT_LEN>,
+}
+
+#[derive(Debug)]
+enum SayoBackendError {
+    Settings(SayoInvalidSpeed),
+    Transport(SayoApplyError<HidTransportError>),
+}
+
+impl fmt::Display for SayoBackendError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Settings(error) => write!(f, "invalid SayoDevice settings: {error}"),
+            Self::Transport(error) => write!(f, "could not apply SayoDevice command: {error}"),
+        }
+    }
+}
+
+impl Error for SayoBackendError {}
+
+impl ControllerBackend for SayoBackend {
+    type Barrier = SayoCommand;
+    type Error = SayoBackendError;
+
+    fn apply_whole_color(&mut self, color: Rgb8) -> Result<(), Self::Error> {
+        SayoModeTransaction::new(SayoMode::Direct, 0, color, false)
+            .map_err(SayoBackendError::Settings)?
+            .apply(&mut self.output)
+            .map_err(SayoBackendError::Transport)
+    }
+
+    fn apply_barrier(&mut self, command: Self::Barrier) -> Result<(), Self::Error> {
+        match command {
+            SayoCommand::Mode {
+                mode,
+                color,
+                speed,
+                random,
+            } => SayoModeTransaction::new(mode, speed, color, random)
+                .map_err(SayoBackendError::Settings)?
+                .apply(&mut self.output)
+                .map_err(SayoBackendError::Transport),
+            SayoCommand::Save => SayoSaveTransaction::default()
+                .apply(&mut self.output)
+                .map_err(SayoBackendError::Transport),
+        }
+    }
+
+    fn shutdown(&mut self) -> Result<(), Self::Error> {
+        Ok(())
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
 struct AorusCommand {
     mode: AorusMode,
     color: Rgb8,
@@ -2538,6 +2691,25 @@ fn parse_areson_mode(input: &str) -> Result<AresonMode, Box<dyn Error>> {
         "colorful-breathing" => Ok(AresonMode::ColorfulBreathing),
         "off" => Ok(AresonMode::Off),
         _ => Err("unknown Areson mouse mode".into()),
+    }
+}
+
+fn parse_sayo_mode(input: &str) -> Result<SayoMode, Box<dyn Error>> {
+    match input {
+        "direct" => Ok(SayoMode::Direct),
+        "breathing" => Ok(SayoMode::Breathing),
+        "wave" => Ok(SayoMode::Wave),
+        "switch" => Ok(SayoMode::Switch),
+        "blink" => Ok(SayoMode::Blink),
+        _ => Err("unknown SayoDevice E1 mode".into()),
+    }
+}
+
+fn parse_sayo_random(input: &str) -> Result<bool, Box<dyn Error>> {
+    match input {
+        "static" => Ok(false),
+        "random" => Ok(true),
+        _ => Err("SayoDevice color behavior must be static or random".into()),
     }
 }
 

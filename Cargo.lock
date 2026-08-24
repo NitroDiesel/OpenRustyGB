@@ -106,6 +106,7 @@ dependencies = [
  "openrustygb-driver-nvidia-esa-xps-730x",
  "openrustygb-driver-nzxt-lift-mouse",
  "openrustygb-driver-patriot-viper-v550",
+ "openrustygb-driver-sayodevice-e1",
  "openrustygb-driver-tecknet-m008",
  "openrustygb-driver-thingm-blink1-mk2",
  "openrustygb-runtime",
@@ -266,6 +267,14 @@ dependencies = [
 
 [[package]]
 name = "openrustygb-driver-patriot-viper-v550"
+version = "0.0.1"
+dependencies = [
+ "openrustygb-domain",
+ "openrustygb-driver-api",
+]
+
+[[package]]
+name = "openrustygb-driver-sayodevice-e1"
 version = "0.0.1"
 dependencies = [
  "openrustygb-domain",
