@@ -272,3 +272,19 @@ matching device completes its live test.
 Physical Dark Project KD3B V2 hardware was not present for this contraction.
 The family remains release-blocked by the global hardware-evidence policy until
 a matching device completes its live test.
+
+## StreamDeckController
+
+- Rust package: `openrustygb-driver-elgato-stream-deck-mk2`
+- Device: Elgato Stream Deck MK.2
+- Match: VID `0FD9`, PID `0080`, interface `0`; the native detector does not constrain HID usage
+- Preserved model: 15 buttons in one 3x5 Button Matrix zone with Direct per-button color mode value `0`
+- Preserved output: each button color is encoded as a 72x72 RGB JPEG at quality 95 and placed in a zero-padded 1024-byte `02 07` report with the button index and little-endian JPEG length
+- Preserved feature reports: 32-byte `03 08` brightness and `03 02` reset reports
+- Safety correction: oversized JPEGs are rejected instead of advertising the full length while silently truncating the payload; all 15 output reports accept either the full buffer or Windows' report-ID-excluded completion length and reject anything shorter
+- Verification: product/interface matcher tests, JPEG framing and padding tests, complete frame-order test, exact feature-report tests, matrix and model-shape tests, executable read-only probe and guarded per-button command, workspace Clippy and tests
+- Deleted native files: `ElgatoStreamDeckController.cpp`, `ElgatoStreamDeckController.h`, `ElgatoStreamDeckControllerDetect.cpp`, `RGBController_ElgatoStreamDeck.cpp`, `RGBController_ElgatoStreamDeck.h`
+
+Physical Elgato Stream Deck MK.2 hardware was not present for this contraction.
+The family remains release-blocked by the global hardware-evidence policy until
+a matching device completes its live test.

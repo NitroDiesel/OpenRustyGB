@@ -28,6 +28,11 @@ use openrustygb_driver_dream_cheeky_webmail_notifier::{
     DirectColorTransaction as DreamColorTransaction, Initialization as DreamInitialization,
     MATCH as DREAM_MATCH, OUTPUT_REPORT_LEN as DREAM_REPORT_LEN, matches as matches_dream,
 };
+use openrustygb_driver_elgato_stream_deck_mk2::{
+    BUTTON_COUNT as STREAM_DECK_BUTTON_COUNT, FrameBuildError as StreamDeckFrameBuildError,
+    FullFrameTransaction as StreamDeckFrameTransaction, MATCH as STREAM_DECK_MATCH,
+    OUTPUT_REPORT_LEN as STREAM_DECK_REPORT_LEN, matches as matches_stream_deck,
+};
 use openrustygb_driver_faustus_keyboard::{
     DEFAULT_BASE_PATH as FAUSTUS_BASE_PATH, FaustusMode, FaustusUpdate, detect_at as detect_faustus,
 };
@@ -117,6 +122,7 @@ fn dispatch_probe(args: &[String]) -> Option<Result<(), Box<dyn Error>>> {
         [command] if command == "probe-haste2" => Some(probe()),
         [command] if command == "probe-dream-cheeky" => Some(probe_dream()),
         [command] if command == "probe-dark-project" => Some(probe_dark_project()),
+        [command] if command == "probe-stream-deck" => Some(probe_stream_deck()),
         [command] if command == "probe-gamesir" => Some(probe_gamesir()),
         [command] if command == "probe-aorus-m2" => Some(probe_aorus()),
         [command] if command == "probe-hyperx-mousemat" => Some(probe_hyperx_mousemat()),
@@ -174,6 +180,30 @@ fn probe_dark_project() -> Result<(), Box<dyn Error>> {
         for endpoint in exact {
             println!(
                 "Found Dark Project KD3B V2 endpoint: {:04X}:{:04X}, interface {}, usage {:04X}:{:04X}",
+                endpoint.vendor_id,
+                endpoint.product_id,
+                endpoint.interface_number,
+                endpoint.usage_page,
+                endpoint.usage
+            );
+        }
+    }
+    println!("Probe completed without opening a device or writing a report.");
+    Ok(())
+}
+
+fn probe_stream_deck() -> Result<(), Box<dyn Error>> {
+    let endpoints = HidInventory::enumerate()?;
+    let exact: Vec<_> = endpoints
+        .iter()
+        .filter(|endpoint| matches_stream_deck(endpoint))
+        .collect();
+    if exact.is_empty() {
+        println!("No exact Elgato Stream Deck MK.2 endpoint found.");
+    } else {
+        for endpoint in exact {
+            println!(
+                "Found Elgato Stream Deck MK.2 endpoint: {:04X}:{:04X}, interface {}, usage {:04X}:{:04X}",
                 endpoint.vendor_id,
                 endpoint.product_id,
                 endpoint.interface_number,
@@ -518,7 +548,7 @@ fn dispatch_per_led_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
 
     if !matches!(
         command.as_str(),
-        "set-asus-monitor" | "set-hyperx-mousemat" | "set-dark-project"
+        "set-asus-monitor" | "set-hyperx-mousemat" | "set-dark-project" | "set-stream-deck"
     ) {
         return Ok(false);
     }
@@ -527,6 +557,7 @@ fn dispatch_per_led_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
         "set-asus-monitor" => set_asus_monitor_colors(colors)?,
         "set-hyperx-mousemat" => set_hyperx_mousemat_colors(colors)?,
         "set-dark-project" => set_dark_project_colors(colors)?,
+        "set-stream-deck" => set_stream_deck_colors(colors)?,
         _ => unreachable!("command was checked above"),
     }
     Ok(true)
@@ -537,6 +568,7 @@ fn print_usage() {
         "Usage:\n  openrustygb probe-aoc-amm700\n  openrustygb probe-aorus-m2\n  openrustygb probe-asus-monitor\n  openrustygb probe-haste2\n  \
          openrustygb probe-dream-cheeky\n  \
          openrustygb probe-dark-project\n  \
+         openrustygb probe-stream-deck\n  \
          openrustygb probe-gamesir\n  \
          openrustygb probe-hyperx-mousemat\n  \
          openrustygb probe-lego-toypad\n  \
@@ -565,6 +597,7 @@ fn print_usage() {
          <flash|fade> RRGGBB <speed>\n  \
          openrustygb set-dream-cheeky-color --confirm-reversible-write RRGGBB\n  \
          openrustygb set-dark-project --confirm-reversible-write <87-RRGGBB-colors>\n  \
+         openrustygb set-stream-deck --confirm-reversible-write <15-RRGGBB-colors>\n  \
          openrustygb set-gamesir-color --confirm-reversible-write RRGGBB\n  \
          openrustygb set-lexip-color --confirm-reversible-write RRGGBB\n  \
          openrustygb set-madcatz-color --confirm-reversible-write RRGGBB <brightness>\n  \
@@ -1432,6 +1465,36 @@ fn set_dark_project_colors(colors: Vec<Rgb8>) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+fn set_stream_deck_colors(colors: Vec<Rgb8>) -> Result<(), Box<dyn Error>> {
+    let endpoints = HidInventory::enumerate()?;
+    let mut exact = endpoints.into_iter().filter(matches_stream_deck);
+    let endpoint = exact
+        .next()
+        .ok_or("exact Elgato Stream Deck MK.2 endpoint not found")?;
+    if exact.next().is_some() {
+        return Err("more than one Stream Deck MK.2 endpoint found; refusing to choose".into());
+    }
+    let output = HidOutput::<STREAM_DECK_REPORT_LEN>::open_matching(&endpoint, STREAM_DECK_MATCH)?;
+    let target = ControllerRef {
+        id: ControllerId::new(NonZeroU64::new(19).expect("nineteen is non-zero")),
+        incarnation: Incarnation::new(NonZeroU32::new(1).expect("one is non-zero")),
+    };
+    let actor = ControllerActor::start(target, StreamDeckBackend { output }, 4)?;
+    let outcome = actor
+        .submit_barrier(target, StreamDeckCommand { colors })?
+        .wait()?;
+    actor.shutdown()?;
+    match outcome {
+        CommandOutcome::Applied { .. } => {}
+        CommandOutcome::Failed { error, .. } => return Err(error.into()),
+        CommandOutcome::Superseded { .. } => {
+            return Err("Stream Deck color command was unexpectedly superseded".into());
+        }
+    }
+    println!("Applied one reversible Elgato Stream Deck MK.2 per-button transaction.");
+    Ok(())
+}
+
 #[derive(Debug)]
 struct Haste2Backend {
     output: HidOutput<OUTPUT_REPORT_LEN>,
@@ -1912,6 +1975,56 @@ impl ControllerBackend for DarkProjectBackend {
             .map_err(DarkProjectBackendError::Settings)?
             .apply(&mut self.output)
             .map_err(DarkProjectBackendError::Output)
+    }
+
+    fn shutdown(&mut self) -> Result<(), Self::Error> {
+        Ok(())
+    }
+}
+
+#[derive(Clone, Debug)]
+struct StreamDeckCommand {
+    colors: Vec<Rgb8>,
+}
+
+#[derive(Debug)]
+struct StreamDeckBackend {
+    output: HidOutput<STREAM_DECK_REPORT_LEN>,
+}
+
+#[derive(Debug)]
+enum StreamDeckBackendError {
+    Frame(StreamDeckFrameBuildError),
+    Output(ExactWriteError<HidTransportError>),
+}
+
+impl fmt::Display for StreamDeckBackendError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Frame(error) => write!(f, "invalid Stream Deck frame: {error}"),
+            Self::Output(error) => write!(f, "could not apply Stream Deck frame: {error}"),
+        }
+    }
+}
+
+impl Error for StreamDeckBackendError {}
+
+impl ControllerBackend for StreamDeckBackend {
+    type Barrier = StreamDeckCommand;
+    type Error = StreamDeckBackendError;
+
+    fn apply_whole_color(&mut self, color: Rgb8) -> Result<(), Self::Error> {
+        StreamDeckFrameTransaction::new(&[color; STREAM_DECK_BUTTON_COUNT])
+            .map_err(StreamDeckBackendError::Frame)?
+            .apply(&mut self.output)
+            .map_err(StreamDeckBackendError::Output)
+    }
+
+    fn apply_barrier(&mut self, command: Self::Barrier) -> Result<(), Self::Error> {
+        StreamDeckFrameTransaction::new(&command.colors)
+            .map_err(StreamDeckBackendError::Frame)?
+            .apply(&mut self.output)
+            .map_err(StreamDeckBackendError::Output)
     }
 
     fn shutdown(&mut self) -> Result<(), Self::Error> {

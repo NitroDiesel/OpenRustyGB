@@ -58,6 +58,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "jpeg-encoder"
+version = "0.7.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a0370574b86f7eca156b9f298392b5e69a23f8c86f3f865add60bbc2e79467a6"
+
+[[package]]
 name = "libc"
 version = "0.2.189"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -85,6 +91,7 @@ dependencies = [
  "openrustygb-driver-asus-monitor",
  "openrustygb-driver-dark-project-kd3b-v2",
  "openrustygb-driver-dream-cheeky-webmail-notifier",
+ "openrustygb-driver-elgato-stream-deck-mk2",
  "openrustygb-driver-faustus-keyboard",
  "openrustygb-driver-gamesir-nova-lite-2",
  "openrustygb-driver-gigabyte-aorus-m2",
@@ -140,6 +147,15 @@ dependencies = [
 name = "openrustygb-driver-dream-cheeky-webmail-notifier"
 version = "0.0.1"
 dependencies = [
+ "openrustygb-domain",
+ "openrustygb-driver-api",
+]
+
+[[package]]
+name = "openrustygb-driver-elgato-stream-deck-mk2"
+version = "0.0.1"
+dependencies = [
+ "jpeg-encoder",
  "openrustygb-domain",
  "openrustygb-driver-api",
 ]

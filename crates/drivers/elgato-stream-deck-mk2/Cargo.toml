@@ -1,0 +1,15 @@
+[package]
+name = "openrustygb-driver-elgato-stream-deck-mk2"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+jpeg-encoder = "=0.7.1"
+openrustygb-domain = { path = "../../openrustygb-domain" }
+openrustygb-driver-api = { path = "../../openrustygb-driver-api" }
+
+[lints]
+workspace = true
