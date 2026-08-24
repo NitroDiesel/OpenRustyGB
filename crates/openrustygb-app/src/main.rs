@@ -108,6 +108,11 @@ use openrustygb_driver_thingm_blink1_mk2::{
     BlinkMode, FEATURE_REPORT_LEN as THINGM_REPORT_LEN, MATCH as THINGM_MATCH,
     ModeTransaction as ThingMModeTransaction, matches as matches_thingm,
 };
+use openrustygb_driver_wushi_l50::{
+    Direction as WushiDirection, InvalidSettings as WushiInvalidSettings,
+    LED_COUNT as WUSHI_LED_COUNT, MATCH as WUSHI_MATCH, ModeTransaction as WushiModeTransaction,
+    REPORT_LEN as WUSHI_REPORT_LEN, WushiMode, matches as matches_wushi,
+};
 use openrustygb_runtime::{CommandOutcome, ControllerActor, ControllerBackend};
 use openrustygb_transport_hid::{HidInventory, HidOutput, HidTransportError};
 
@@ -134,6 +139,7 @@ fn dispatch_probe(args: &[String]) -> Option<Result<(), Box<dyn Error>>> {
         [command] if command == "probe-dark-project" => Some(probe_dark_project()),
         [command] if command == "probe-stream-deck" => Some(probe_stream_deck()),
         [command] if command == "probe-sayo" => Some(probe_sayo()),
+        [command] if command == "probe-wushi" => Some(probe_wushi()),
         [command] if command == "probe-gamesir" => Some(probe_gamesir()),
         [command] if command == "probe-aorus-m2" => Some(probe_aorus()),
         [command] if command == "probe-hyperx-mousemat" => Some(probe_hyperx_mousemat()),
@@ -264,6 +270,30 @@ fn probe_sayo() -> Result<(), Box<dyn Error>> {
         for endpoint in exact {
             println!(
                 "Found SayoDevice E1 endpoint: {:04X}:{:04X}, interface {}, usage {:04X}:{:04X}",
+                endpoint.vendor_id,
+                endpoint.product_id,
+                endpoint.interface_number,
+                endpoint.usage_page,
+                endpoint.usage
+            );
+        }
+    }
+    println!("Probe completed without opening a device or writing a report.");
+    Ok(())
+}
+
+fn probe_wushi() -> Result<(), Box<dyn Error>> {
+    let endpoints = HidInventory::enumerate()?;
+    let exact: Vec<_> = endpoints
+        .iter()
+        .filter(|endpoint| matches_wushi(endpoint))
+        .collect();
+    if exact.is_empty() {
+        println!("No exact JSAUX RGB Docking Station endpoint found.");
+    } else {
+        for endpoint in exact {
+            println!(
+                "Found JSAUX RGB Docking Station endpoint: {:04X}:{:04X}, interface {}, usage {:04X}:{:04X}",
                 endpoint.vendor_id,
                 endpoint.product_id,
                 endpoint.interface_number,
@@ -423,6 +453,9 @@ fn probe_lego() -> Result<(), Box<dyn Error>> {
 }
 
 fn dispatch_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
+    if dispatch_wushi_write(args)? {
+        return Ok(true);
+    }
     if dispatch_sayo_write(args)? {
         return Ok(true);
     }
@@ -510,6 +543,40 @@ fn dispatch_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
         }
         _ => return Ok(false),
     }
+    Ok(true)
+}
+
+fn dispatch_wushi_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
+    let [
+        command,
+        confirmation,
+        mode,
+        zone_1,
+        zone_2,
+        zone_3,
+        zone_4,
+        brightness,
+        speed,
+        direction,
+    ] = args
+    else {
+        return Ok(false);
+    };
+    if command != "set-wushi" || confirmation != "--confirm-reversible-write" {
+        return Ok(false);
+    }
+    set_wushi(WushiCommand {
+        mode: parse_wushi_mode(mode)?,
+        colors: [
+            parse_rgb(zone_1)?,
+            parse_rgb(zone_2)?,
+            parse_rgb(zone_3)?,
+            parse_rgb(zone_4)?,
+        ],
+        brightness: parse_u8_decimal(brightness, "brightness")?,
+        speed: parse_u8_decimal(speed, "speed")?,
+        direction: parse_wushi_direction(direction)?,
+    })?;
     Ok(true)
 }
 
@@ -675,6 +742,7 @@ fn print_usage() {
          openrustygb probe-dark-project\n  \
          openrustygb probe-stream-deck\n  \
          openrustygb probe-sayo\n  \
+         openrustygb probe-wushi\n  \
          openrustygb probe-gamesir\n  \
          openrustygb probe-hyperx-mousemat\n  \
          openrustygb probe-lego-toypad\n  \
@@ -710,6 +778,9 @@ fn print_usage() {
          openrustygb set-sayo --confirm-reversible-write \
          <direct|breathing|wave|switch|blink> RRGGBB <speed> <static|random>\n  \
          openrustygb save-sayo --confirm-persistent-write\n  \
+         openrustygb set-wushi --confirm-reversible-write \
+         <direct|breathing|rainbow-wave|spectrum|race|stacking> \
+         <ZONE1> <ZONE2> <ZONE3> <ZONE4> <brightness> <speed> <left|right>\n  \
          openrustygb set-gamesir-color --confirm-reversible-write RRGGBB\n  \
          openrustygb set-lexip-color --confirm-reversible-write RRGGBB\n  \
          openrustygb set-madcatz-color --confirm-reversible-write RRGGBB <brightness>\n  \
@@ -1666,6 +1737,36 @@ fn set_sayo(command: SayoCommand) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+fn set_wushi(command: WushiCommand) -> Result<(), Box<dyn Error>> {
+    let endpoints = HidInventory::enumerate()?;
+    let mut exact = endpoints.into_iter().filter(matches_wushi);
+    let endpoint = exact
+        .next()
+        .ok_or("exact JSAUX RGB Docking Station endpoint not found")?;
+    if exact.next().is_some() {
+        return Err(
+            "more than one JSAUX RGB Docking Station endpoint found; refusing to choose".into(),
+        );
+    }
+    let output = HidOutput::<WUSHI_REPORT_LEN>::open_matching(&endpoint, WUSHI_MATCH)?;
+    let target = ControllerRef {
+        id: ControllerId::new(NonZeroU64::new(22).expect("twenty-two is non-zero")),
+        incarnation: Incarnation::new(NonZeroU32::new(1).expect("one is non-zero")),
+    };
+    let actor = ControllerActor::start(target, WushiBackend { output }, 4)?;
+    let outcome = actor.submit_barrier(target, command)?.wait()?;
+    actor.shutdown()?;
+    match outcome {
+        CommandOutcome::Applied { .. } => {}
+        CommandOutcome::Failed { error, .. } => return Err(error.into()),
+        CommandOutcome::Superseded { .. } => {
+            return Err("Wushi mode command was unexpectedly superseded".into());
+        }
+    }
+    println!("Applied one reversible JSAUX RGB Docking Station transaction.");
+    Ok(())
+}
+
 #[derive(Debug)]
 struct Haste2Backend {
     output: HidOutput<OUTPUT_REPORT_LEN>,
@@ -2328,6 +2429,72 @@ impl ControllerBackend for SayoBackend {
 }
 
 #[derive(Clone, Copy, Debug)]
+struct WushiCommand {
+    mode: WushiMode,
+    colors: [Rgb8; WUSHI_LED_COUNT],
+    brightness: u8,
+    speed: u8,
+    direction: WushiDirection,
+}
+
+#[derive(Debug)]
+struct WushiBackend {
+    output: HidOutput<WUSHI_REPORT_LEN>,
+}
+
+#[derive(Debug)]
+enum WushiBackendError {
+    Settings(WushiInvalidSettings),
+    Output(HidTransportError),
+}
+
+impl fmt::Display for WushiBackendError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Settings(error) => write!(f, "invalid Wushi settings: {error}"),
+            Self::Output(error) => write!(f, "could not apply Wushi mode: {error}"),
+        }
+    }
+}
+
+impl Error for WushiBackendError {}
+
+impl ControllerBackend for WushiBackend {
+    type Barrier = WushiCommand;
+    type Error = WushiBackendError;
+
+    fn apply_whole_color(&mut self, color: Rgb8) -> Result<(), Self::Error> {
+        WushiModeTransaction::new(
+            WushiMode::Direct,
+            [color; WUSHI_LED_COUNT],
+            2,
+            1,
+            WushiDirection::Left,
+        )
+        .map_err(WushiBackendError::Settings)?
+        .apply(&mut self.output)
+        .map_err(WushiBackendError::Output)
+    }
+
+    fn apply_barrier(&mut self, command: Self::Barrier) -> Result<(), Self::Error> {
+        WushiModeTransaction::new(
+            command.mode,
+            command.colors,
+            command.brightness,
+            command.speed,
+            command.direction,
+        )
+        .map_err(WushiBackendError::Settings)?
+        .apply(&mut self.output)
+        .map_err(WushiBackendError::Output)
+    }
+
+    fn shutdown(&mut self) -> Result<(), Self::Error> {
+        Ok(())
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
 struct AorusCommand {
     mode: AorusMode,
     color: Rgb8,
@@ -2710,6 +2877,26 @@ fn parse_sayo_random(input: &str) -> Result<bool, Box<dyn Error>> {
         "static" => Ok(false),
         "random" => Ok(true),
         _ => Err("SayoDevice color behavior must be static or random".into()),
+    }
+}
+
+fn parse_wushi_mode(input: &str) -> Result<WushiMode, Box<dyn Error>> {
+    match input {
+        "direct" => Ok(WushiMode::Direct),
+        "breathing" => Ok(WushiMode::Breathing),
+        "rainbow-wave" => Ok(WushiMode::RainbowWave),
+        "spectrum" => Ok(WushiMode::SpectrumCycle),
+        "race" => Ok(WushiMode::RaceCycle),
+        "stacking" => Ok(WushiMode::Stacking),
+        _ => Err("unknown Wushi L50 mode".into()),
+    }
+}
+
+fn parse_wushi_direction(input: &str) -> Result<WushiDirection, Box<dyn Error>> {
+    match input {
+        "left" => Ok(WushiDirection::Left),
+        "right" => Ok(WushiDirection::Right),
+        _ => Err("Wushi direction must be left or right".into()),
     }
 }
 

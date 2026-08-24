@@ -320,3 +320,20 @@ a matching device completes its live test.
 Physical SayoDevice E1 hardware was not present for this contraction. The
 family remains release-blocked by the global hardware-evidence policy until a
 matching device completes its live test.
+
+## WushiController
+
+- Rust package: `openrustygb-driver-wushi-l50`
+- Device: JSAUX RGB Docking Station / Wushi L50
+- Match: VID `306F`, PID `1234`; the native detector does not constrain interface or usage
+- Preserved model: four Dock zones; Direct, Breathing, Rainbow Wave, Spectrum Cycle, Race Cycle, and Stacking modes; brightness `1..2`, speed `1..4`, and left/right direction where supported
+- Preserved output: zero-padded 65-byte feature report with command `16`, effect, speed, brightness, four RGB triplets, and direction flags
+- Preserved platform framing: Windows prepends report ID `CC` and shifts the command by one byte; non-Windows platforms place command `16` at byte zero
+- Preserved mode defaults: Breathing uses its selected color in zone 1 and native white defaults elsewhere; firmware-generated effects use white defaults; unsupported speed, brightness, and direction controls are ignored exactly by mode
+- Safety correction: mode-dependent speed and brightness values are validated before report construction
+- Verification: product-only matcher tests, platform-specific Direct packet tests, effect/default/direction packet tests, settings bounds and model-shape tests, executable read-only probe and guarded hardware-mode command, workspace Clippy and tests
+- Deleted native files: `WushiL50USBController.cpp`, `WushiL50USBController.h`, `WushiL50USBDetect.cpp`, `RGBController_WushiL50USB.cpp`, `RGBController_WushiL50USB.h`
+
+Physical JSAUX RGB Docking Station hardware was not present for this
+contraction. The family remains release-blocked by the global hardware-evidence
+policy until a matching device completes its live test.

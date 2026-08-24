@@ -27,6 +27,7 @@ members = [
     "crates/drivers/elgato-stream-deck-mk2",
     "crates/drivers/areson-mice",
     "crates/drivers/sayodevice-e1",
+    "crates/drivers/wushi-l50",
     "crates/openrustygb-app",
     "xtask",
 ]

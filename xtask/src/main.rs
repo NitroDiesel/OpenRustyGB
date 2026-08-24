@@ -32,6 +32,7 @@ const PORTED_FAMILIES: &[(&str, &str)] = &[
     ("SayoDeviceController", "sayodevice-e1"),
     ("ThingMController", "thingm-blink1-mk2"),
     ("TecknetController", "tecknet-m008"),
+    ("WushiController", "wushi-l50"),
 ];
 const PORTED_DETECTOR_SOURCES: &[&str] = &[
     "Controllers/AOCMousematController/AOCMousematControllerDetect.cpp",
@@ -54,6 +55,7 @@ const PORTED_DETECTOR_SOURCES: &[&str] = &[
     "Controllers/SayoDeviceController/SayoDeviceControllerDetect.cpp",
     "Controllers/ThingMController/ThingMControllerDetect.cpp",
     "Controllers/TecknetController/TecknetControllerDetect.cpp",
+    "Controllers/WushiController/WushiL50USBDetect.cpp",
 ];
 
 fn main() -> Result<(), Box<dyn Error>> {
