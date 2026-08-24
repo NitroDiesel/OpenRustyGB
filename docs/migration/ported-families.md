@@ -181,3 +181,18 @@ device completes its live test.
 Physical supported ASUS monitor hardware was not present for this contraction.
 The family remains release-blocked by the global hardware-evidence policy until
 a matching device completes its live test.
+
+## TecknetController
+
+- Rust package: `openrustygb-driver-tecknet-m008`
+- Device: Tecknet M008 mouse
+- Match: VID `04D9`, PID `FC05`, usage page `FFA0`, usage `0001`; the native detector accepts any interface
+- Preserved model: mouse with Direct value `0`, Off value `FF`, Breathing value `1`, one Logo zone, and one Logo LED
+- Preserved output: 16-byte feature report beginning `02 04`, inverted RGB channels, brightness at byte 5, and the native breathing speed table `00 06 03 01` at byte 6
+- Safety correction: Off emits the intended zero-brightness, zero-speed report without indexing a two-row native table with mode value `FF`
+- Verification: flexible-interface matcher test, inverted RGB packet golden, complete breathing-speed table test, safe Off test, model-shape test, executable read-only probe, workspace Clippy and tests
+- Deleted native files: `TecknetController.cpp`, `TecknetController.h`, `TecknetControllerDetect.cpp`, `RGBController_Tecknet.cpp`, `RGBController_Tecknet.h`
+
+Physical Tecknet hardware was not present for this contraction. The family
+remains release-blocked by the global hardware-evidence policy until a matching
+device completes its live test.

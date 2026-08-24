@@ -60,6 +60,11 @@ use openrustygb_driver_patriot_viper_v550::{
     MATCH as VIPER_MATCH, PerLedColorTransaction as ViperColorTransaction,
     matches as matches_viper,
 };
+use openrustygb_driver_tecknet_m008::{
+    FEATURE_REPORT_LEN as TECKNET_REPORT_LEN, InvalidSpeed as TecknetInvalidSpeed,
+    MATCH as TECKNET_MATCH, ModeColorTransaction as TecknetTransaction, TecknetMode,
+    matches as matches_tecknet,
+};
 use openrustygb_driver_thingm_blink1_mk2::{
     BlinkMode, FEATURE_REPORT_LEN as THINGM_REPORT_LEN, MATCH as THINGM_MATCH,
     ModeTransaction as ThingMModeTransaction, matches as matches_thingm,
@@ -94,6 +99,7 @@ fn dispatch_probe(args: &[String]) -> Option<Result<(), Box<dyn Error>>> {
         [command] if command == "probe-nzxt-lift" => Some(probe_nzxt()),
         [command] if command == "probe-viper-v550" => Some(probe_viper()),
         [command] if command == "probe-thingm-blink" => Some(probe_thingm()),
+        [command] if command == "probe-tecknet-m008" => Some(probe_tecknet()),
         [command] if command == "probe-faustus" => {
             probe_faustus();
             Some(Ok(()))
@@ -139,6 +145,30 @@ fn probe_asus_monitor() -> Result<(), Box<dyn Error>> {
             println!(
                 "Found {} endpoint: {:04X}:{:04X}, interface {}, usage {:04X}:{:04X}",
                 model.name,
+                endpoint.vendor_id,
+                endpoint.product_id,
+                endpoint.interface_number,
+                endpoint.usage_page,
+                endpoint.usage
+            );
+        }
+    }
+    println!("Probe completed without opening a device or writing a report.");
+    Ok(())
+}
+
+fn probe_tecknet() -> Result<(), Box<dyn Error>> {
+    let endpoints = HidInventory::enumerate()?;
+    let exact: Vec<_> = endpoints
+        .iter()
+        .filter(|endpoint| matches_tecknet(endpoint))
+        .collect();
+    if exact.is_empty() {
+        println!("No exact Tecknet M008 lighting endpoint found.");
+    } else {
+        for endpoint in exact {
+            println!(
+                "Found Tecknet M008 endpoint: {:04X}:{:04X}, interface {}, usage {:04X}:{:04X}",
                 endpoint.vendor_id,
                 endpoint.product_id,
                 endpoint.interface_number,
@@ -238,6 +268,16 @@ fn dispatch_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
 
 fn dispatch_variable_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
     match args {
+        [command, confirmation, mode, color, speed]
+            if command == "set-tecknet-m008" && confirmation == "--confirm-reversible-write" =>
+        {
+            set_tecknet_mode(
+                parse_tecknet_mode(mode)?,
+                parse_rgb(color)?,
+                parse_u8_decimal(speed, "speed")?,
+            )?;
+            Ok(true)
+        }
         [
             command,
             confirmation,
@@ -281,6 +321,7 @@ fn print_usage() {
          openrustygb probe-nzxt-lift\n  \
          openrustygb probe-viper-v550\n  \
          openrustygb probe-thingm-blink\n  \
+         openrustygb probe-tecknet-m008\n  \
          openrustygb probe-faustus\n  \
          openrustygb set-asus-monitor --confirm-reversible-write <RRGGBB...>\n  \
          openrustygb set-haste2-color --confirm-reversible-write RRGGBB\n  \
@@ -296,6 +337,8 @@ fn print_usage() {
          <LEFT-0> <LEFT-1> <LEFT-2> <RIGHT-0> <RIGHT-1> <RIGHT-2>\n  \
          openrustygb set-thingm-blink --confirm-reversible-write \
          <off|direct|fade> <LED-A-RRGGBB> <LED-B-RRGGBB> <speed>\n  \
+         openrustygb set-tecknet-m008 --confirm-reversible-write \
+         <direct|off|breathing> RRGGBB <speed>\n  \
          openrustygb set-n5312-mode --confirm-reversible-write \
          <direct|breathing|single-breath|off> RRGGBB <brightness> <speed>\n  \
          openrustygb set-faustus-mode --confirm-reversible-write \
@@ -970,6 +1013,36 @@ fn set_asus_monitor_colors(colors: Vec<Rgb8>) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+fn set_tecknet_mode(mode: TecknetMode, color: Rgb8, speed: u8) -> Result<(), Box<dyn Error>> {
+    let endpoints = HidInventory::enumerate()?;
+    let mut exact = endpoints.into_iter().filter(matches_tecknet);
+    let endpoint = exact
+        .next()
+        .ok_or("exact Tecknet M008 lighting endpoint not found")?;
+    if exact.next().is_some() {
+        return Err("more than one Tecknet M008 endpoint found; refusing to choose".into());
+    }
+    let output = HidOutput::<TECKNET_REPORT_LEN>::open_matching(&endpoint, TECKNET_MATCH)?;
+    let target = ControllerRef {
+        id: ControllerId::new(NonZeroU64::new(13).expect("thirteen is non-zero")),
+        incarnation: Incarnation::new(NonZeroU32::new(1).expect("one is non-zero")),
+    };
+    let actor = ControllerActor::start(target, TecknetBackend { output }, 4)?;
+    let outcome = actor
+        .submit_barrier(target, TecknetCommand { mode, color, speed })?
+        .wait()?;
+    actor.shutdown()?;
+    match outcome {
+        CommandOutcome::Applied { .. } => {}
+        CommandOutcome::Failed { error, .. } => return Err(error.into()),
+        CommandOutcome::Superseded { .. } => {
+            return Err("mode command was unexpectedly superseded".into());
+        }
+    }
+    println!("Applied one reversible Tecknet M008 mode transaction.");
+    Ok(())
+}
+
 #[derive(Debug)]
 struct Haste2Backend {
     output: HidOutput<OUTPUT_REPORT_LEN>,
@@ -1344,6 +1417,58 @@ impl ControllerBackend for AsusMonitorBackend {
     }
 }
 
+#[derive(Clone, Copy, Debug)]
+struct TecknetCommand {
+    mode: TecknetMode,
+    color: Rgb8,
+    speed: u8,
+}
+
+#[derive(Debug)]
+struct TecknetBackend {
+    output: HidOutput<TECKNET_REPORT_LEN>,
+}
+
+#[derive(Debug)]
+enum TecknetBackendError {
+    Settings(TecknetInvalidSpeed),
+    Output(HidTransportError),
+}
+
+impl fmt::Display for TecknetBackendError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Settings(error) => write!(f, "invalid Tecknet mode: {error}"),
+            Self::Output(error) => write!(f, "could not apply Tecknet mode: {error}"),
+        }
+    }
+}
+
+impl Error for TecknetBackendError {}
+
+impl ControllerBackend for TecknetBackend {
+    type Barrier = TecknetCommand;
+    type Error = TecknetBackendError;
+
+    fn apply_whole_color(&mut self, color: Rgb8) -> Result<(), Self::Error> {
+        TecknetTransaction::new(TecknetMode::Direct, color, 0)
+            .map_err(TecknetBackendError::Settings)?
+            .apply(&mut self.output)
+            .map_err(TecknetBackendError::Output)
+    }
+
+    fn apply_barrier(&mut self, command: Self::Barrier) -> Result<(), Self::Error> {
+        TecknetTransaction::new(command.mode, command.color, command.speed)
+            .map_err(TecknetBackendError::Settings)?
+            .apply(&mut self.output)
+            .map_err(TecknetBackendError::Output)
+    }
+
+    fn shutdown(&mut self) -> Result<(), Self::Error> {
+        Ok(())
+    }
+}
+
 impl ControllerBackend for MsiBackend {
     type Barrier = MsiCommand;
     type Error = HidTransportError;
@@ -1450,6 +1575,15 @@ fn parse_thingm_mode(input: &str) -> Result<BlinkMode, Box<dyn Error>> {
         "direct" => Ok(BlinkMode::Direct),
         "fade" => Ok(BlinkMode::Fade),
         _ => Err("ThingM mode must be off, direct, or fade".into()),
+    }
+}
+
+fn parse_tecknet_mode(input: &str) -> Result<TecknetMode, Box<dyn Error>> {
+    match input {
+        "direct" => Ok(TecknetMode::Direct),
+        "off" => Ok(TecknetMode::Off),
+        "breathing" => Ok(TecknetMode::Breathing),
+        _ => Err("Tecknet mode must be direct, off, or breathing".into()),
     }
 }
 

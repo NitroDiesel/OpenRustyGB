@@ -18,6 +18,7 @@ members = [
     "crates/drivers/msi-3-zone-keyboard",
     "crates/drivers/nzxt-lift-mouse",
     "crates/drivers/asus-monitor",
+    "crates/drivers/tecknet-m008",
     "crates/openrustygb-app",
     "xtask",
 ]

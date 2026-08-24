@@ -20,6 +20,7 @@ const PORTED_FAMILIES: &[(&str, &str)] = &[
     ("NZXTMouseController", "nzxt-lift-mouse"),
     ("PatriotViperMouseController", "patriot-viper-v550"),
     ("ThingMController", "thingm-blink1-mk2"),
+    ("TecknetController", "tecknet-m008"),
 ];
 const PORTED_DETECTOR_SOURCES: &[&str] = &[
     "Controllers/AsusMonitorController/AsusMonitorControllerDetect.cpp",
@@ -33,6 +34,7 @@ const PORTED_DETECTOR_SOURCES: &[&str] = &[
     "Controllers/NZXTMouseController/NZXTMouseControllerDetect.cpp",
     "Controllers/PatriotViperMouseController/PatriotViperMouseControllerDetect.cpp",
     "Controllers/ThingMController/ThingMControllerDetect.cpp",
+    "Controllers/TecknetController/TecknetControllerDetect.cpp",
 ];
 
 fn main() -> Result<(), Box<dyn Error>> {

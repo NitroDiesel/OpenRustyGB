@@ -22,6 +22,7 @@ openrustygb-driver-nvidia-esa-xps-730x = { path = "../drivers/nvidia-esa-xps-730
 openrustygb-driver-nzxt-lift-mouse = { path = "../drivers/nzxt-lift-mouse" }
 openrustygb-driver-patriot-viper-v550 = { path = "../drivers/patriot-viper-v550" }
 openrustygb-driver-thingm-blink1-mk2 = { path = "../drivers/thingm-blink1-mk2" }
+openrustygb-driver-tecknet-m008 = { path = "../drivers/tecknet-m008" }
 openrustygb-runtime = { path = "../openrustygb-runtime" }
 openrustygb-transport-hid = { path = "../openrustygb-transport-hid" }
 
