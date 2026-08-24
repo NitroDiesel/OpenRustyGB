@@ -18,6 +18,7 @@ openrustygb-driver-elgato-stream-deck-mk2 = { path = "../drivers/elgato-stream-d
 openrustygb-driver-faustus-keyboard = { path = "../drivers/faustus-keyboard" }
 openrustygb-driver-gamesir-nova-lite-2 = { path = "../drivers/gamesir-nova-lite-2" }
 openrustygb-driver-gigabyte-aorus-m2 = { path = "../drivers/gigabyte-aorus-m2" }
+openrustygb-driver-gigabyte-aorus-c300-glass = { path = "../drivers/gigabyte-aorus-c300-glass" }
 openrustygb-driver-hyperx-pulsefire-haste2 = { path = "../drivers/hyperx-pulsefire-haste2" }
 openrustygb-driver-hyperx-mousemat = { path = "../drivers/hyperx-mousemat" }
 openrustygb-driver-lexip-np93-alpha = { path = "../drivers/lexip-np93-alpha" }

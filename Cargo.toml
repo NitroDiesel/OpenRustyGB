@@ -29,6 +29,7 @@ members = [
     "crates/drivers/sayodevice-e1",
     "crates/drivers/wushi-l50",
     "crates/drivers/redragon-mice",
+    "crates/drivers/gigabyte-aorus-c300-glass",
     "crates/openrustygb-app",
     "xtask",
 ]

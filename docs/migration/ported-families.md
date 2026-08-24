@@ -353,3 +353,19 @@ policy until a matching device completes its live test.
 Physical supported Redragon mouse hardware was not present for this contraction.
 The family remains release-blocked by the global hardware-evidence policy until
 a matching device completes its live test.
+
+## GigabyteAorusPCCaseController
+
+- Rust package: `openrustygb-driver-gigabyte-aorus-c300-glass`
+- Device: Gigabyte AORUS C300 GLASS
+- Match: VID `1044`, PID `7A30`, interface `0`, usage `FF01:0001`
+- Preserved model: one Case LED; Custom, Off, Breathing, Spectrum Cycle, Flashing, and Double Flashing modes; brightness `0..9`; inverse speed range `10..6`
+- Preserved output: three exact 9-byte feature reports in native order—`C8` color, `C9` hardware mode, and `B6` commit
+- Preserved mode normalization: Custom forces normal speed `9`; Off sends black using Custom mode with brightness and speed `10`; Breathing forces maximum brightness `9`; Spectrum Cycle forces red and maximum brightness; flashing modes scale brightness by ten
+- Safety correction: mode-dependent brightness and speed values are validated before packet construction
+- Verification: exact endpoint matcher tests, Custom/Off/Spectrum/Double Flashing packet goldens, three-report ordering test, settings bounds and model-shape tests, executable read-only probe and guarded hardware-mode command, workspace Clippy and tests
+- Deleted native files: `GigabyteAorusPCCaseController.cpp`, `GigabyteAorusPCCaseController.h`, `GigabyteAorusPCCaseControllerDetect.cpp`, `RGBController_GigabyteAorusPCCase.cpp`, `RGBController_GigabyteAorusPCCase.h`
+
+Physical Gigabyte AORUS C300 GLASS hardware was not present for this contraction.
+The family remains release-blocked by the global hardware-evidence policy until
+a matching device completes its live test.

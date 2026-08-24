@@ -44,6 +44,11 @@ use openrustygb_driver_gamesir_nova_lite_2::{
     MATCH as GAMESIR_MATCH, OUTPUT_REPORT_LEN as GAMESIR_REPORT_LEN,
     StaticColorTransaction as GameSirColorTransaction, matches as matches_gamesir,
 };
+use openrustygb_driver_gigabyte_aorus_c300_glass::{
+    AorusCaseMode, FEATURE_REPORT_LEN as AORUS_CASE_REPORT_LEN,
+    InvalidSettings as AorusCaseInvalidSettings, MATCH as AORUS_CASE_MATCH,
+    ModeTransaction as AorusCaseModeTransaction, matches as matches_aorus_case,
+};
 use openrustygb_driver_gigabyte_aorus_m2::{
     AorusMode, DirectColorTransaction as AorusDirectColorTransaction,
     FEATURE_REPORT_LEN as AORUS_REPORT_LEN, InvalidSettings as AorusInvalidSettings,
@@ -147,6 +152,7 @@ fn dispatch_probe(args: &[String]) -> Option<Result<(), Box<dyn Error>>> {
         [command] if command == "probe-wushi" => Some(probe_wushi()),
         [command] if command == "probe-gamesir" => Some(probe_gamesir()),
         [command] if command == "probe-aorus-m2" => Some(probe_aorus()),
+        [command] if command == "probe-aorus-case" => Some(probe_aorus_case()),
         [command] if command == "probe-hyperx-mousemat" => Some(probe_hyperx_mousemat()),
         [command] if command == "probe-lego-toypad" => Some(probe_lego()),
         [command] if command == "probe-lexip" => Some(probe_lexip()),
@@ -178,6 +184,30 @@ fn probe_aorus() -> Result<(), Box<dyn Error>> {
         for endpoint in exact {
             println!(
                 "Found Gigabyte Aorus M2 endpoint: {:04X}:{:04X}, interface {}, usage {:04X}:{:04X}",
+                endpoint.vendor_id,
+                endpoint.product_id,
+                endpoint.interface_number,
+                endpoint.usage_page,
+                endpoint.usage
+            );
+        }
+    }
+    println!("Probe completed without opening a device or writing a report.");
+    Ok(())
+}
+
+fn probe_aorus_case() -> Result<(), Box<dyn Error>> {
+    let endpoints = HidInventory::enumerate()?;
+    let exact: Vec<_> = endpoints
+        .iter()
+        .filter(|endpoint| matches_aorus_case(endpoint))
+        .collect();
+    if exact.is_empty() {
+        println!("No exact Gigabyte AORUS C300 GLASS lighting endpoint found.");
+    } else {
+        for endpoint in exact {
+            println!(
+                "Found Gigabyte AORUS C300 GLASS endpoint: {:04X}:{:04X}, interface {}, usage {:04X}:{:04X}",
                 endpoint.vendor_id,
                 endpoint.product_id,
                 endpoint.interface_number,
@@ -495,6 +525,9 @@ fn dispatch_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
     if dispatch_redragon_write(args)? {
         return Ok(true);
     }
+    if dispatch_aorus_case_write(args)? {
+        return Ok(true);
+    }
     if dispatch_variable_write(args)? {
         return Ok(true);
     }
@@ -665,6 +698,22 @@ fn dispatch_redragon_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
     Ok(true)
 }
 
+fn dispatch_aorus_case_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
+    let [command, confirmation, mode, color, brightness, speed] = args else {
+        return Ok(false);
+    };
+    if command != "set-aorus-case" || confirmation != "--confirm-reversible-write" {
+        return Ok(false);
+    }
+    set_aorus_case_mode(AorusCaseCommand {
+        mode: parse_aorus_case_mode(mode)?,
+        color: parse_rgb(color)?,
+        brightness: parse_u8_decimal(brightness, "brightness")?,
+        speed: parse_u8_decimal(speed, "speed")?,
+    })?;
+    Ok(true)
+}
+
 fn dispatch_variable_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
     if dispatch_per_led_write(args)? {
         return Ok(true);
@@ -784,6 +833,7 @@ fn dispatch_per_led_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
 fn print_usage() {
     eprintln!(
         "Usage:\n  openrustygb probe-aoc-amm700\n  openrustygb probe-aorus-m2\n  openrustygb probe-asus-monitor\n  openrustygb probe-haste2\n  \
+         openrustygb probe-aorus-case\n  \
          openrustygb probe-areson\n  \
          openrustygb probe-redragon\n  \
          openrustygb probe-dream-cheeky\n  \
@@ -810,6 +860,9 @@ fn print_usage() {
          RRGGBB <brightness> <speed> <cw|ccw>\n  \
          openrustygb set-aorus-m2 --confirm-reversible-write \
          <direct|static|breathing|spectrum|flashing|double-flash|off> \
+         RRGGBB <brightness> <speed>\n  \
+         openrustygb set-aorus-case --confirm-reversible-write \
+         <custom|off|breathing|spectrum|flashing|double-flashing> \
          RRGGBB <brightness> <speed>\n  \
          openrustygb set-areson --confirm-reversible-write \
          <static|rainbow-wave|breathing|spectrum|single-color-wave|colorful-breathing|off> \
@@ -1664,6 +1717,34 @@ fn set_aorus_mode(command: AorusCommand) -> Result<(), Box<dyn Error>> {
         }
     }
     println!("Applied one reversible Gigabyte Aorus M2 mode transaction.");
+    Ok(())
+}
+
+fn set_aorus_case_mode(command: AorusCaseCommand) -> Result<(), Box<dyn Error>> {
+    let endpoints = HidInventory::enumerate()?;
+    let mut exact = endpoints.into_iter().filter(matches_aorus_case);
+    let endpoint = exact
+        .next()
+        .ok_or("exact Gigabyte AORUS C300 GLASS lighting endpoint not found")?;
+    if exact.next().is_some() {
+        return Err("more than one AORUS C300 GLASS endpoint found; refusing to choose".into());
+    }
+    let output = HidOutput::<AORUS_CASE_REPORT_LEN>::open_matching(&endpoint, AORUS_CASE_MATCH)?;
+    let target = ControllerRef {
+        id: ControllerId::new(NonZeroU64::new(24).expect("twenty-four is non-zero")),
+        incarnation: Incarnation::new(NonZeroU32::new(1).expect("one is non-zero")),
+    };
+    let actor = ControllerActor::start(target, AorusCaseBackend { output }, 4)?;
+    let outcome = actor.submit_barrier(target, command)?.wait()?;
+    actor.shutdown()?;
+    match outcome {
+        CommandOutcome::Applied { .. } => {}
+        CommandOutcome::Failed { error, .. } => return Err(error.into()),
+        CommandOutcome::Superseded { .. } => {
+            return Err("AORUS C300 GLASS mode command was unexpectedly superseded".into());
+        }
+    }
+    println!("Applied one reversible Gigabyte AORUS C300 GLASS mode transaction.");
     Ok(())
 }
 
@@ -2668,6 +2749,64 @@ impl ControllerBackend for AorusBackend {
 }
 
 #[derive(Clone, Copy, Debug)]
+struct AorusCaseCommand {
+    mode: AorusCaseMode,
+    color: Rgb8,
+    brightness: u8,
+    speed: u8,
+}
+
+#[derive(Debug)]
+struct AorusCaseBackend {
+    output: HidOutput<AORUS_CASE_REPORT_LEN>,
+}
+
+#[derive(Debug)]
+enum AorusCaseBackendError {
+    Settings(AorusCaseInvalidSettings),
+    Output(HidTransportError),
+}
+
+impl fmt::Display for AorusCaseBackendError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Settings(error) => write!(f, "invalid AORUS case mode: {error}"),
+            Self::Output(error) => write!(f, "could not apply AORUS case mode: {error}"),
+        }
+    }
+}
+
+impl Error for AorusCaseBackendError {}
+
+impl ControllerBackend for AorusCaseBackend {
+    type Barrier = AorusCaseCommand;
+    type Error = AorusCaseBackendError;
+
+    fn apply_whole_color(&mut self, color: Rgb8) -> Result<(), Self::Error> {
+        AorusCaseModeTransaction::new(AorusCaseMode::Custom, color, 9, 9)
+            .map_err(AorusCaseBackendError::Settings)?
+            .apply(&mut self.output)
+            .map_err(AorusCaseBackendError::Output)
+    }
+
+    fn apply_barrier(&mut self, command: Self::Barrier) -> Result<(), Self::Error> {
+        AorusCaseModeTransaction::new(
+            command.mode,
+            command.color,
+            command.brightness,
+            command.speed,
+        )
+        .map_err(AorusCaseBackendError::Settings)?
+        .apply(&mut self.output)
+        .map_err(AorusCaseBackendError::Output)
+    }
+
+    fn shutdown(&mut self) -> Result<(), Self::Error> {
+        Ok(())
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
 struct AocCommand {
     mode: AocMode,
     color: Rgb8,
@@ -2955,6 +3094,18 @@ fn parse_aorus_mode(input: &str) -> Result<AorusMode, Box<dyn Error>> {
         "double-flash" => Ok(AorusMode::DoubleFlash),
         "off" => Ok(AorusMode::Off),
         _ => Err("unknown Gigabyte Aorus M2 mode".into()),
+    }
+}
+
+fn parse_aorus_case_mode(input: &str) -> Result<AorusCaseMode, Box<dyn Error>> {
+    match input {
+        "custom" => Ok(AorusCaseMode::Custom),
+        "off" => Ok(AorusCaseMode::Off),
+        "breathing" => Ok(AorusCaseMode::Breathing),
+        "spectrum" => Ok(AorusCaseMode::SpectrumCycle),
+        "flashing" => Ok(AorusCaseMode::Flashing),
+        "double-flashing" => Ok(AorusCaseMode::DoubleFlashing),
+        _ => Err("unknown Gigabyte AORUS case mode".into()),
     }
 }
 

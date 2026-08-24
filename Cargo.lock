@@ -95,6 +95,7 @@ dependencies = [
  "openrustygb-driver-elgato-stream-deck-mk2",
  "openrustygb-driver-faustus-keyboard",
  "openrustygb-driver-gamesir-nova-lite-2",
+ "openrustygb-driver-gigabyte-aorus-c300-glass",
  "openrustygb-driver-gigabyte-aorus-m2",
  "openrustygb-driver-hyperx-mousemat",
  "openrustygb-driver-hyperx-pulsefire-haste2",
@@ -181,6 +182,14 @@ dependencies = [
 
 [[package]]
 name = "openrustygb-driver-gamesir-nova-lite-2"
+version = "0.0.1"
+dependencies = [
+ "openrustygb-domain",
+ "openrustygb-driver-api",
+]
+
+[[package]]
+name = "openrustygb-driver-gigabyte-aorus-c300-glass"
 version = "0.0.1"
 dependencies = [
  "openrustygb-domain",
