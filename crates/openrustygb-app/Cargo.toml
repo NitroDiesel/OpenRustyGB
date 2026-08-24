@@ -12,6 +12,7 @@ openrustygb-driver-asus-monitor = { path = "../drivers/asus-monitor" }
 openrustygb-domain = { path = "../openrustygb-domain" }
 openrustygb-driver-api = { path = "../openrustygb-driver-api" }
 openrustygb-driver-dream-cheeky-webmail-notifier = { path = "../drivers/dream-cheeky-webmail-notifier" }
+openrustygb-driver-dark-project-kd3b-v2 = { path = "../drivers/dark-project-kd3b-v2" }
 openrustygb-driver-faustus-keyboard = { path = "../drivers/faustus-keyboard" }
 openrustygb-driver-gamesir-nova-lite-2 = { path = "../drivers/gamesir-nova-lite-2" }
 openrustygb-driver-gigabyte-aorus-m2 = { path = "../drivers/gigabyte-aorus-m2" }

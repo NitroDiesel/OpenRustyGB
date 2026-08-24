@@ -10,6 +10,7 @@ const PINNED_DETECTOR_SOURCES: usize = 224;
 const PORTED_FAMILIES: &[(&str, &str)] = &[
     ("AOCMousematController", "aoc-amm700-mousemat"),
     ("AsusMonitorController", "asus-monitor"),
+    ("DarkProject", "dark-project-kd3b-v2"),
     ("DreamCheekyController", "dream-cheeky-webmail-notifier"),
     ("GameSirController", "gamesir-nova-lite-2"),
     ("GigabyteAorusMouseController", "gigabyte-aorus-m2"),
@@ -32,6 +33,7 @@ const PORTED_FAMILIES: &[(&str, &str)] = &[
 const PORTED_DETECTOR_SOURCES: &[&str] = &[
     "Controllers/AOCMousematController/AOCMousematControllerDetect.cpp",
     "Controllers/AsusMonitorController/AsusMonitorControllerDetect.cpp",
+    "Controllers/DarkProject/DarkProjectControllerDetect.cpp",
     "Controllers/DreamCheekyController/DreamCheekyControllerDetect.cpp",
     "Controllers/GameSirController/GameSirControllerDetect.cpp",
     "Controllers/GigabyteAorusMouseController/GigabyteAorusMouseControllerDetect.cpp",

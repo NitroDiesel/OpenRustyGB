@@ -19,6 +19,11 @@ use openrustygb_driver_asus_monitor::{
     LedCountQuery as AsusMonitorLedCountQuery, REPORT_LEN as ASUS_MONITOR_REPORT_LEN,
     match_model as match_asus_monitor,
 };
+use openrustygb_driver_dark_project_kd3b_v2::{
+    InvalidColorCount as DarkProjectInvalidColorCount, LED_COUNT as DARK_PROJECT_LED_COUNT,
+    MATCH as DARK_PROJECT_MATCH, OUTPUT_REPORT_LEN as DARK_PROJECT_REPORT_LEN,
+    PerLedColorTransaction as DarkProjectColorTransaction, matches as matches_dark_project,
+};
 use openrustygb_driver_dream_cheeky_webmail_notifier::{
     DirectColorTransaction as DreamColorTransaction, Initialization as DreamInitialization,
     MATCH as DREAM_MATCH, OUTPUT_REPORT_LEN as DREAM_REPORT_LEN, matches as matches_dream,
@@ -111,6 +116,7 @@ fn dispatch_probe(args: &[String]) -> Option<Result<(), Box<dyn Error>>> {
         [command] if command == "probe-asus-monitor" => Some(probe_asus_monitor()),
         [command] if command == "probe-haste2" => Some(probe()),
         [command] if command == "probe-dream-cheeky" => Some(probe_dream()),
+        [command] if command == "probe-dark-project" => Some(probe_dark_project()),
         [command] if command == "probe-gamesir" => Some(probe_gamesir()),
         [command] if command == "probe-aorus-m2" => Some(probe_aorus()),
         [command] if command == "probe-hyperx-mousemat" => Some(probe_hyperx_mousemat()),
@@ -144,6 +150,30 @@ fn probe_aorus() -> Result<(), Box<dyn Error>> {
         for endpoint in exact {
             println!(
                 "Found Gigabyte Aorus M2 endpoint: {:04X}:{:04X}, interface {}, usage {:04X}:{:04X}",
+                endpoint.vendor_id,
+                endpoint.product_id,
+                endpoint.interface_number,
+                endpoint.usage_page,
+                endpoint.usage
+            );
+        }
+    }
+    println!("Probe completed without opening a device or writing a report.");
+    Ok(())
+}
+
+fn probe_dark_project() -> Result<(), Box<dyn Error>> {
+    let endpoints = HidInventory::enumerate()?;
+    let exact: Vec<_> = endpoints
+        .iter()
+        .filter(|endpoint| matches_dark_project(endpoint))
+        .collect();
+    if exact.is_empty() {
+        println!("No exact Dark Project KD3B V2 lighting endpoint found.");
+    } else {
+        for endpoint in exact {
+            println!(
+                "Found Dark Project KD3B V2 endpoint: {:04X}:{:04X}, interface {}, usage {:04X}:{:04X}",
                 endpoint.vendor_id,
                 endpoint.product_id,
                 endpoint.interface_number,
@@ -388,6 +418,10 @@ fn dispatch_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
 }
 
 fn dispatch_variable_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
+    if dispatch_per_led_write(args)? {
+        return Ok(true);
+    }
+
     match args {
         [command, confirmation, mode, color, brightness, speed]
             if command == "set-aorus-m2" && confirmation == "--confirm-reversible-write" =>
@@ -448,18 +482,6 @@ fn dispatch_variable_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
             ])?;
             Ok(true)
         }
-        [command, confirmation, colors @ ..]
-            if command == "set-asus-monitor" && confirmation == "--confirm-reversible-write" =>
-        {
-            set_asus_monitor_colors(parse_rgb_colors(colors)?)?;
-            Ok(true)
-        }
-        [command, confirmation, colors @ ..]
-            if command == "set-hyperx-mousemat" && confirmation == "--confirm-reversible-write" =>
-        {
-            set_hyperx_mousemat_colors(parse_rgb_colors(colors)?)?;
-            Ok(true)
-        }
         [command, confirmation, mode, center, left, right]
             if command == "set-lego-toypad"
                 && confirmation == "--confirm-reversible-write"
@@ -486,10 +508,35 @@ fn dispatch_variable_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
     }
 }
 
+fn dispatch_per_led_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
+    let [command, confirmation, colors @ ..] = args else {
+        return Ok(false);
+    };
+    if confirmation != "--confirm-reversible-write" {
+        return Ok(false);
+    }
+
+    if !matches!(
+        command.as_str(),
+        "set-asus-monitor" | "set-hyperx-mousemat" | "set-dark-project"
+    ) {
+        return Ok(false);
+    }
+    let colors = parse_rgb_colors(colors)?;
+    match command.as_str() {
+        "set-asus-monitor" => set_asus_monitor_colors(colors)?,
+        "set-hyperx-mousemat" => set_hyperx_mousemat_colors(colors)?,
+        "set-dark-project" => set_dark_project_colors(colors)?,
+        _ => unreachable!("command was checked above"),
+    }
+    Ok(true)
+}
+
 fn print_usage() {
     eprintln!(
         "Usage:\n  openrustygb probe-aoc-amm700\n  openrustygb probe-aorus-m2\n  openrustygb probe-asus-monitor\n  openrustygb probe-haste2\n  \
          openrustygb probe-dream-cheeky\n  \
+         openrustygb probe-dark-project\n  \
          openrustygb probe-gamesir\n  \
          openrustygb probe-hyperx-mousemat\n  \
          openrustygb probe-lego-toypad\n  \
@@ -517,6 +564,7 @@ fn print_usage() {
          openrustygb set-lego-toypad --confirm-reversible-write \
          <flash|fade> RRGGBB <speed>\n  \
          openrustygb set-dream-cheeky-color --confirm-reversible-write RRGGBB\n  \
+         openrustygb set-dark-project --confirm-reversible-write <87-RRGGBB-colors>\n  \
          openrustygb set-gamesir-color --confirm-reversible-write RRGGBB\n  \
          openrustygb set-lexip-color --confirm-reversible-write RRGGBB\n  \
          openrustygb set-madcatz-color --confirm-reversible-write RRGGBB <brightness>\n  \
@@ -1353,6 +1401,37 @@ fn set_aorus_mode(command: AorusCommand) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+fn set_dark_project_colors(colors: Vec<Rgb8>) -> Result<(), Box<dyn Error>> {
+    let endpoints = HidInventory::enumerate()?;
+    let mut exact = endpoints.into_iter().filter(matches_dark_project);
+    let endpoint = exact
+        .next()
+        .ok_or("exact Dark Project KD3B V2 lighting endpoint not found")?;
+    if exact.next().is_some() {
+        return Err("more than one Dark Project endpoint found; refusing to choose".into());
+    }
+    let output =
+        HidOutput::<DARK_PROJECT_REPORT_LEN>::open_matching(&endpoint, DARK_PROJECT_MATCH)?;
+    let target = ControllerRef {
+        id: ControllerId::new(NonZeroU64::new(18).expect("eighteen is non-zero")),
+        incarnation: Incarnation::new(NonZeroU32::new(1).expect("one is non-zero")),
+    };
+    let actor = ControllerActor::start(target, DarkProjectBackend { output }, 4)?;
+    let outcome = actor
+        .submit_barrier(target, DarkProjectCommand { colors })?
+        .wait()?;
+    actor.shutdown()?;
+    match outcome {
+        CommandOutcome::Applied { .. } => {}
+        CommandOutcome::Failed { error, .. } => return Err(error.into()),
+        CommandOutcome::Superseded { .. } => {
+            return Err("Dark Project color command was unexpectedly superseded".into());
+        }
+    }
+    println!("Applied one reversible Dark Project KD3B V2 per-key transaction.");
+    Ok(())
+}
+
 #[derive(Debug)]
 struct Haste2Backend {
     output: HidOutput<OUTPUT_REPORT_LEN>,
@@ -1783,6 +1862,56 @@ impl ControllerBackend for HyperXMousematBackend {
             .map_err(HyperXMousematBackendError::Settings)?
             .apply(&mut self.output)
             .map_err(HyperXMousematBackendError::Output)
+    }
+
+    fn shutdown(&mut self) -> Result<(), Self::Error> {
+        Ok(())
+    }
+}
+
+#[derive(Clone, Debug)]
+struct DarkProjectCommand {
+    colors: Vec<Rgb8>,
+}
+
+#[derive(Debug)]
+struct DarkProjectBackend {
+    output: HidOutput<DARK_PROJECT_REPORT_LEN>,
+}
+
+#[derive(Debug)]
+enum DarkProjectBackendError {
+    Settings(DarkProjectInvalidColorCount),
+    Output(ExactWriteError<HidTransportError>),
+}
+
+impl fmt::Display for DarkProjectBackendError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Settings(error) => write!(f, "invalid Dark Project colors: {error}"),
+            Self::Output(error) => write!(f, "could not apply Dark Project colors: {error}"),
+        }
+    }
+}
+
+impl Error for DarkProjectBackendError {}
+
+impl ControllerBackend for DarkProjectBackend {
+    type Barrier = DarkProjectCommand;
+    type Error = DarkProjectBackendError;
+
+    fn apply_whole_color(&mut self, color: Rgb8) -> Result<(), Self::Error> {
+        DarkProjectColorTransaction::new(&vec![color; DARK_PROJECT_LED_COUNT])
+            .map_err(DarkProjectBackendError::Settings)?
+            .apply(&mut self.output)
+            .map_err(DarkProjectBackendError::Output)
+    }
+
+    fn apply_barrier(&mut self, command: Self::Barrier) -> Result<(), Self::Error> {
+        DarkProjectColorTransaction::new(&command.colors)
+            .map_err(DarkProjectBackendError::Settings)?
+            .apply(&mut self.output)
+            .map_err(DarkProjectBackendError::Output)
     }
 
     fn shutdown(&mut self) -> Result<(), Self::Error> {

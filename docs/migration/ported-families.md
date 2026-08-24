@@ -257,3 +257,18 @@ device completes its live test.
 Physical Gigabyte Aorus M2 hardware was not present for this contraction. The
 family remains release-blocked by the global hardware-evidence policy until a
 matching device completes its live test.
+
+## DarkProject
+
+- Rust package: `openrustygb-driver-dark-project-kd3b-v2`
+- Device: Dark Project KD3B V2 keyboard
+- Exact match: VID `195D`, PID `2061`, interface `2`, usage page `FFC2`, usage `0004`
+- Preserved model: 87-key ANSI keyboard, one Keyboard matrix zone with the native 6x18 map, and Direct mode value `1`
+- Preserved output: exact two 256-byte reports with headers `08 07 00 00 00` and `08 07 00 01 00`; the native 87-entry packet map places red and green in the first report and blue in the second
+- Safety correction: each transaction requires all 87 key colors, preserving a complete frame instead of reproducing the native single-LED method's incorrect remap to the first packet slot
+- Verification: exact matcher rejection tests, dual-report packet and channel-split goldens, color-count, matrix-map and model-shape tests, executable read-only probe and guarded per-key command, workspace Clippy and tests
+- Deleted native files: `DarkProjectControllerDetect.cpp`, `DarkProjectKeyboardController.cpp`, `DarkProjectKeyboardController.h`, `RGBController_DarkProjectKeyboard.cpp`, `RGBController_DarkProjectKeyboard.h`
+
+Physical Dark Project KD3B V2 hardware was not present for this contraction.
+The family remains release-blocked by the global hardware-evidence policy until
+a matching device completes its live test.
