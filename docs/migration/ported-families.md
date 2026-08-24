@@ -196,3 +196,19 @@ a matching device completes its live test.
 Physical Tecknet hardware was not present for this contraction. The family
 remains release-blocked by the global hardware-evidence policy until a matching
 device completes its live test.
+
+## HyperXMousematController
+
+- Rust package: `openrustygb-driver-hyperx-mousemat`
+- Devices: HyperX Fury Ultra, HyperX Pulsefire Mat, and HyperX Pulsefire Mat RGB Mouse Pad XL
+- Exact matches: Fury Ultra VID `0951`, PID `1705`, interface `0`; Pulsefire Mat VID `03F0`, PID `0F8D`, interface `1`, usage `FF90:FF00`; XL VID `0951`, PID `1741`, with the native Windows interface `1`/usage `FF90:FF00` and non-Windows interface `0`/usage `000C:0001` split
+- Preserved model: Direct mode value `FFFF`; 15-LED Underglow plus five-LED Strip zones for standard devices, and a two-LED Underglow zone for the XL
+- Preserved output: one 65-byte `00 04 F2` profile-selection feature report followed by two 65-byte reports containing 16 `81 RR GG BB` slots each
+- Preserved lifecycle contract: the native 50 ms direct-mode refresh interval is exported for the long-running controller host
+- Safety correction: the two or 20 model colors are zero-padded to the protocol's 32 slots instead of reproducing the native out-of-bounds reads
+- Verification: all platform-specific matcher tests, three-report packet goldens, unused-slot padding tests, exact color-count and model-shape tests, executable read-only probe, workspace Clippy and tests
+- Deleted native files: `HyperXMousematController.cpp`, `HyperXMousematController.h`, `HyperXMousematControllerDetect.cpp`, `RGBController_HyperXMousemat.cpp`, `RGBController_HyperXMousemat.h`
+
+Physical supported HyperX mousemat hardware was not present for this
+contraction. The family remains release-blocked by the global hardware-evidence
+policy until a matching device completes its live test.

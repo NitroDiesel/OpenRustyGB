@@ -19,6 +19,7 @@ members = [
     "crates/drivers/nzxt-lift-mouse",
     "crates/drivers/asus-monitor",
     "crates/drivers/tecknet-m008",
+    "crates/drivers/hyperx-mousemat",
     "crates/openrustygb-app",
     "xtask",
 ]

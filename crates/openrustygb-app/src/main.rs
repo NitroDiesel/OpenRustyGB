@@ -25,6 +25,11 @@ use openrustygb_driver_gamesir_nova_lite_2::{
     MATCH as GAMESIR_MATCH, OUTPUT_REPORT_LEN as GAMESIR_REPORT_LEN,
     StaticColorTransaction as GameSirColorTransaction, matches as matches_gamesir,
 };
+use openrustygb_driver_hyperx_mousemat::{
+    DirectColorTransaction as HyperXMousematColorTransaction,
+    FEATURE_REPORT_LEN as HYPERX_MOUSEMAT_REPORT_LEN, HyperXMousematModel,
+    InvalidColorCount as HyperXMousematInvalidColorCount, match_model as match_hyperx_mousemat,
+};
 use openrustygb_driver_hyperx_pulsefire_haste2::{
     MATCH, OUTPUT_REPORT_LEN, WheelColorTransaction, matches,
 };
@@ -91,6 +96,7 @@ fn dispatch_probe(args: &[String]) -> Option<Result<(), Box<dyn Error>>> {
         [command] if command == "probe-haste2" => Some(probe()),
         [command] if command == "probe-dream-cheeky" => Some(probe_dream()),
         [command] if command == "probe-gamesir" => Some(probe_gamesir()),
+        [command] if command == "probe-hyperx-mousemat" => Some(probe_hyperx_mousemat()),
         [command] if command == "probe-lexip" => Some(probe_lexip()),
         [command] if command == "probe-madcatz" => Some(probe_madcatz()),
         [command] if command == "probe-msi-3-zone" => Some(probe_msi()),
@@ -169,6 +175,31 @@ fn probe_tecknet() -> Result<(), Box<dyn Error>> {
         for endpoint in exact {
             println!(
                 "Found Tecknet M008 endpoint: {:04X}:{:04X}, interface {}, usage {:04X}:{:04X}",
+                endpoint.vendor_id,
+                endpoint.product_id,
+                endpoint.interface_number,
+                endpoint.usage_page,
+                endpoint.usage
+            );
+        }
+    }
+    println!("Probe completed without opening a device or writing a report.");
+    Ok(())
+}
+
+fn probe_hyperx_mousemat() -> Result<(), Box<dyn Error>> {
+    let endpoints = HidInventory::enumerate()?;
+    let exact: Vec<_> = endpoints
+        .iter()
+        .filter_map(|endpoint| match_hyperx_mousemat(endpoint).map(|model| (endpoint, model)))
+        .collect();
+    if exact.is_empty() {
+        println!("No exact supported HyperX mousemat lighting endpoint found.");
+    } else {
+        for (endpoint, model) in exact {
+            println!(
+                "Found {} endpoint: {:04X}:{:04X}, interface {}, usage {:04X}:{:04X}",
+                model.name,
                 endpoint.vendor_id,
                 endpoint.product_id,
                 endpoint.interface_number,
@@ -304,6 +335,12 @@ fn dispatch_variable_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
             set_asus_monitor_colors(parse_rgb_colors(colors)?)?;
             Ok(true)
         }
+        [command, confirmation, colors @ ..]
+            if command == "set-hyperx-mousemat" && confirmation == "--confirm-reversible-write" =>
+        {
+            set_hyperx_mousemat_colors(parse_rgb_colors(colors)?)?;
+            Ok(true)
+        }
         _ => Ok(false),
     }
 }
@@ -313,6 +350,7 @@ fn print_usage() {
         "Usage:\n  openrustygb probe-asus-monitor\n  openrustygb probe-haste2\n  \
          openrustygb probe-dream-cheeky\n  \
          openrustygb probe-gamesir\n  \
+         openrustygb probe-hyperx-mousemat\n  \
          openrustygb probe-lexip\n  \
          openrustygb probe-madcatz\n  \
          openrustygb probe-msi-3-zone\n  \
@@ -325,6 +363,7 @@ fn print_usage() {
          openrustygb probe-faustus\n  \
          openrustygb set-asus-monitor --confirm-reversible-write <RRGGBB...>\n  \
          openrustygb set-haste2-color --confirm-reversible-write RRGGBB\n  \
+         openrustygb set-hyperx-mousemat --confirm-reversible-write <RRGGBB...>\n  \
          openrustygb set-dream-cheeky-color --confirm-reversible-write RRGGBB\n  \
          openrustygb set-gamesir-color --confirm-reversible-write RRGGBB\n  \
          openrustygb set-lexip-color --confirm-reversible-write RRGGBB\n  \
@@ -1043,6 +1082,40 @@ fn set_tecknet_mode(mode: TecknetMode, color: Rgb8, speed: u8) -> Result<(), Box
     Ok(())
 }
 
+fn set_hyperx_mousemat_colors(colors: Vec<Rgb8>) -> Result<(), Box<dyn Error>> {
+    let endpoints = HidInventory::enumerate()?;
+    let mut exact = endpoints
+        .into_iter()
+        .filter_map(|endpoint| match_hyperx_mousemat(&endpoint).map(|model| (endpoint, model)));
+    let (endpoint, model) = exact
+        .next()
+        .ok_or("exact supported HyperX mousemat lighting endpoint not found")?;
+    if exact.next().is_some() {
+        return Err(
+            "more than one supported HyperX mousemat endpoint found; refusing to choose".into(),
+        );
+    }
+    let output = HidOutput::<HYPERX_MOUSEMAT_REPORT_LEN>::open_matching(&endpoint, model.matcher)?;
+    let target = ControllerRef {
+        id: ControllerId::new(NonZeroU64::new(14).expect("fourteen is non-zero")),
+        incarnation: Incarnation::new(NonZeroU32::new(1).expect("one is non-zero")),
+    };
+    let actor = ControllerActor::start(target, HyperXMousematBackend { output, model }, 4)?;
+    let outcome = actor
+        .submit_barrier(target, HyperXMousematCommand { colors })?
+        .wait()?;
+    actor.shutdown()?;
+    match outcome {
+        CommandOutcome::Applied { .. } => {}
+        CommandOutcome::Failed { error, .. } => return Err(error.into()),
+        CommandOutcome::Superseded { .. } => {
+            return Err("color command was unexpectedly superseded".into());
+        }
+    }
+    println!("Applied one reversible {} per-LED transaction.", model.name);
+    Ok(())
+}
+
 #[derive(Debug)]
 struct Haste2Backend {
     output: HidOutput<OUTPUT_REPORT_LEN>,
@@ -1427,6 +1500,57 @@ struct TecknetCommand {
 #[derive(Debug)]
 struct TecknetBackend {
     output: HidOutput<TECKNET_REPORT_LEN>,
+}
+
+#[derive(Clone, Debug)]
+struct HyperXMousematCommand {
+    colors: Vec<Rgb8>,
+}
+
+#[derive(Debug)]
+struct HyperXMousematBackend {
+    output: HidOutput<HYPERX_MOUSEMAT_REPORT_LEN>,
+    model: HyperXMousematModel,
+}
+
+#[derive(Debug)]
+enum HyperXMousematBackendError {
+    Settings(HyperXMousematInvalidColorCount),
+    Output(HidTransportError),
+}
+
+impl fmt::Display for HyperXMousematBackendError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Settings(error) => write!(f, "invalid HyperX mousemat colors: {error}"),
+            Self::Output(error) => write!(f, "could not apply HyperX mousemat colors: {error}"),
+        }
+    }
+}
+
+impl Error for HyperXMousematBackendError {}
+
+impl ControllerBackend for HyperXMousematBackend {
+    type Barrier = HyperXMousematCommand;
+    type Error = HyperXMousematBackendError;
+
+    fn apply_whole_color(&mut self, color: Rgb8) -> Result<(), Self::Error> {
+        HyperXMousematColorTransaction::new(self.model, &vec![color; self.model.led_count()])
+            .map_err(HyperXMousematBackendError::Settings)?
+            .apply(&mut self.output)
+            .map_err(HyperXMousematBackendError::Output)
+    }
+
+    fn apply_barrier(&mut self, command: Self::Barrier) -> Result<(), Self::Error> {
+        HyperXMousematColorTransaction::new(self.model, &command.colors)
+            .map_err(HyperXMousematBackendError::Settings)?
+            .apply(&mut self.output)
+            .map_err(HyperXMousematBackendError::Output)
+    }
+
+    fn shutdown(&mut self) -> Result<(), Self::Error> {
+        Ok(())
+    }
 }
 
 #[derive(Debug)]

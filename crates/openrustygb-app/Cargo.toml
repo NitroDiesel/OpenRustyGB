@@ -14,6 +14,7 @@ openrustygb-driver-dream-cheeky-webmail-notifier = { path = "../drivers/dream-ch
 openrustygb-driver-faustus-keyboard = { path = "../drivers/faustus-keyboard" }
 openrustygb-driver-gamesir-nova-lite-2 = { path = "../drivers/gamesir-nova-lite-2" }
 openrustygb-driver-hyperx-pulsefire-haste2 = { path = "../drivers/hyperx-pulsefire-haste2" }
+openrustygb-driver-hyperx-mousemat = { path = "../drivers/hyperx-mousemat" }
 openrustygb-driver-lexip-np93-alpha = { path = "../drivers/lexip-np93-alpha" }
 openrustygb-driver-madcatz-cyborg-light = { path = "../drivers/madcatz-cyborg-light" }
 openrustygb-driver-msi-3-zone-keyboard = { path = "../drivers/msi-3-zone-keyboard" }
