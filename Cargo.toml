@@ -17,6 +17,7 @@ members = [
     "crates/drivers/thingm-blink1-mk2",
     "crates/drivers/msi-3-zone-keyboard",
     "crates/drivers/nzxt-lift-mouse",
+    "crates/drivers/asus-monitor",
     "crates/openrustygb-app",
     "xtask",
 ]

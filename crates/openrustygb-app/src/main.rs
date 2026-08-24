@@ -8,6 +8,12 @@ use std::path::Path;
 
 use openrustygb_domain::{ControllerId, ControllerRef, Incarnation, Rgb8};
 use openrustygb_driver_api::{ExactWriteError, PrefixTooLong};
+use openrustygb_driver_asus_monitor::{
+    DirectColorTransaction as AsusMonitorColorTransaction,
+    Initialization as AsusMonitorInitialization, InvalidLedCount as AsusMonitorInvalidLedCount,
+    LedCountQuery as AsusMonitorLedCountQuery, REPORT_LEN as ASUS_MONITOR_REPORT_LEN,
+    match_model as match_asus_monitor,
+};
 use openrustygb_driver_dream_cheeky_webmail_notifier::{
     DirectColorTransaction as DreamColorTransaction, Initialization as DreamInitialization,
     MATCH as DREAM_MATCH, OUTPUT_REPORT_LEN as DREAM_REPORT_LEN, matches as matches_dream,
@@ -76,6 +82,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 fn dispatch_probe(args: &[String]) -> Option<Result<(), Box<dyn Error>>> {
     match args {
         [] => Some(probe()),
+        [command] if command == "probe-asus-monitor" => Some(probe_asus_monitor()),
         [command] if command == "probe-haste2" => Some(probe()),
         [command] if command == "probe-dream-cheeky" => Some(probe_dream()),
         [command] if command == "probe-gamesir" => Some(probe_gamesir()),
@@ -119,7 +126,35 @@ fn probe_nzxt() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+fn probe_asus_monitor() -> Result<(), Box<dyn Error>> {
+    let endpoints = HidInventory::enumerate()?;
+    let exact: Vec<_> = endpoints
+        .iter()
+        .filter_map(|endpoint| match_asus_monitor(endpoint).map(|model| (endpoint, model)))
+        .collect();
+    if exact.is_empty() {
+        println!("No exact supported ASUS monitor lighting endpoint found.");
+    } else {
+        for (endpoint, model) in exact {
+            println!(
+                "Found {} endpoint: {:04X}:{:04X}, interface {}, usage {:04X}:{:04X}",
+                model.name,
+                endpoint.vendor_id,
+                endpoint.product_id,
+                endpoint.interface_number,
+                endpoint.usage_page,
+                endpoint.usage
+            );
+        }
+    }
+    println!("Probe completed without opening a device or writing a report.");
+    Ok(())
+}
+
 fn dispatch_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
+    if dispatch_variable_write(args)? {
+        return Ok(true);
+    }
     match args {
         [command, confirmation, color]
             if command == "set-haste2-color" && confirmation == "--confirm-reversible-write" =>
@@ -196,6 +231,13 @@ fn dispatch_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
                 parse_rgb(aux)?,
             ])?;
         }
+        _ => return Ok(false),
+    }
+    Ok(true)
+}
+
+fn dispatch_variable_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
+    match args {
         [
             command,
             confirmation,
@@ -214,15 +256,22 @@ fn dispatch_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
                 parse_rgb(right_1)?,
                 parse_rgb(right_2)?,
             ])?;
+            Ok(true)
         }
-        _ => return Ok(false),
+        [command, confirmation, colors @ ..]
+            if command == "set-asus-monitor" && confirmation == "--confirm-reversible-write" =>
+        {
+            set_asus_monitor_colors(parse_rgb_colors(colors)?)?;
+            Ok(true)
+        }
+        _ => Ok(false),
     }
-    Ok(true)
 }
 
 fn print_usage() {
     eprintln!(
-        "Usage:\n  openrustygb probe-haste2\n  openrustygb probe-dream-cheeky\n  \
+        "Usage:\n  openrustygb probe-asus-monitor\n  openrustygb probe-haste2\n  \
+         openrustygb probe-dream-cheeky\n  \
          openrustygb probe-gamesir\n  \
          openrustygb probe-lexip\n  \
          openrustygb probe-madcatz\n  \
@@ -233,6 +282,7 @@ fn print_usage() {
          openrustygb probe-viper-v550\n  \
          openrustygb probe-thingm-blink\n  \
          openrustygb probe-faustus\n  \
+         openrustygb set-asus-monitor --confirm-reversible-write <RRGGBB...>\n  \
          openrustygb set-haste2-color --confirm-reversible-write RRGGBB\n  \
          openrustygb set-dream-cheeky-color --confirm-reversible-write RRGGBB\n  \
          openrustygb set-gamesir-color --confirm-reversible-write RRGGBB\n  \
@@ -868,6 +918,58 @@ fn set_nzxt_colors(colors: [Rgb8; 6]) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+fn set_asus_monitor_colors(colors: Vec<Rgb8>) -> Result<(), Box<dyn Error>> {
+    let endpoints = HidInventory::enumerate()?;
+    let mut exact = endpoints
+        .into_iter()
+        .filter_map(|endpoint| match_asus_monitor(&endpoint).map(|model| (endpoint, model)));
+    let (endpoint, model) = exact
+        .next()
+        .ok_or("exact supported ASUS monitor lighting endpoint not found")?;
+    if exact.next().is_some() {
+        return Err(
+            "more than one supported ASUS monitor endpoint found; refusing to choose".into(),
+        );
+    }
+
+    let mut output = HidOutput::<ASUS_MONITOR_REPORT_LEN>::open_matching(&endpoint, model.matcher)?;
+    let led_count = AsusMonitorLedCountQuery::new().apply(&mut output)?;
+    if colors.len() != usize::from(led_count) {
+        return Err(format!(
+            "{} reported {led_count} LEDs, but {} colors were supplied",
+            model.name,
+            colors.len()
+        )
+        .into());
+    }
+    AsusMonitorInitialization::new().apply(&mut output)?;
+    let target = ControllerRef {
+        id: ControllerId::new(NonZeroU64::new(12).expect("twelve is non-zero")),
+        incarnation: Incarnation::new(NonZeroU32::new(1).expect("one is non-zero")),
+    };
+    let actor = ControllerActor::start(
+        target,
+        AsusMonitorBackend {
+            output,
+            led_count: usize::from(led_count),
+        },
+        4,
+    )?;
+    let outcome = actor
+        .submit_barrier(target, AsusMonitorCommand { colors })?
+        .wait()?;
+    actor.shutdown()?;
+    match outcome {
+        CommandOutcome::Applied { .. } => {}
+        CommandOutcome::Failed { error, .. } => return Err(error.into()),
+        CommandOutcome::Superseded { .. } => {
+            return Err("color command was unexpectedly superseded".into());
+        }
+    }
+    println!("Applied one reversible {} per-LED transaction.", model.name);
+    Ok(())
+}
+
 #[derive(Debug)]
 struct Haste2Backend {
     output: HidOutput<OUTPUT_REPORT_LEN>,
@@ -1191,6 +1293,57 @@ impl ControllerBackend for NzxtBackend {
     }
 }
 
+#[derive(Clone, Debug)]
+struct AsusMonitorCommand {
+    colors: Vec<Rgb8>,
+}
+
+#[derive(Debug)]
+struct AsusMonitorBackend {
+    output: HidOutput<ASUS_MONITOR_REPORT_LEN>,
+    led_count: usize,
+}
+
+#[derive(Debug)]
+enum AsusMonitorBackendError {
+    Settings(AsusMonitorInvalidLedCount),
+    Output(ExactWriteError<HidTransportError>),
+}
+
+impl fmt::Display for AsusMonitorBackendError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Settings(error) => write!(f, "invalid ASUS monitor colors: {error}"),
+            Self::Output(error) => write!(f, "could not apply ASUS monitor colors: {error}"),
+        }
+    }
+}
+
+impl Error for AsusMonitorBackendError {}
+
+impl ControllerBackend for AsusMonitorBackend {
+    type Barrier = AsusMonitorCommand;
+    type Error = AsusMonitorBackendError;
+
+    fn apply_whole_color(&mut self, color: Rgb8) -> Result<(), Self::Error> {
+        AsusMonitorColorTransaction::new(&vec![color; self.led_count])
+            .map_err(AsusMonitorBackendError::Settings)?
+            .apply(&mut self.output)
+            .map_err(AsusMonitorBackendError::Output)
+    }
+
+    fn apply_barrier(&mut self, command: Self::Barrier) -> Result<(), Self::Error> {
+        AsusMonitorColorTransaction::new(&command.colors)
+            .map_err(AsusMonitorBackendError::Settings)?
+            .apply(&mut self.output)
+            .map_err(AsusMonitorBackendError::Output)
+    }
+
+    fn shutdown(&mut self) -> Result<(), Self::Error> {
+        Ok(())
+    }
+}
+
 impl ControllerBackend for MsiBackend {
     type Barrier = MsiCommand;
     type Error = HidTransportError;
@@ -1265,6 +1418,10 @@ fn parse_rgb(input: &str) -> Result<Rgb8, Box<dyn Error>> {
         u8::from_str_radix(&input[2..4], 16)?,
         u8::from_str_radix(&input[4..6], 16)?,
     ))
+}
+
+fn parse_rgb_colors(inputs: &[String]) -> Result<Vec<Rgb8>, Box<dyn Error>> {
+    inputs.iter().map(|input| parse_rgb(input)).collect()
 }
 
 fn parse_faustus_mode(input: &str) -> Result<FaustusMode, Box<dyn Error>> {

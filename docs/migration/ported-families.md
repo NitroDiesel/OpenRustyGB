@@ -165,3 +165,19 @@ device completes its live test.
 Physical NZXT Lift hardware was not present for this contraction. The family
 remains release-blocked by the global hardware-evidence policy until a matching
 device completes its live test.
+
+## AsusMonitorController
+
+- Rust package: `openrustygb-driver-asus-monitor`
+- Devices: ASUS ROG STRIX XG27AQDMG and XG27UCG, ASUS ROG SWIFT PG32UCDM and PG32UCDMR
+- Exact matches: VID `0B05`, product IDs `1BA3`, `1BB4`, `1B2B`, and `1C9B`, interface `1`, usage page `FF72`, usage `00A1`
+- Preserved model: monitor with Direct mode value `0`, one dynamic Monitor zone, and LED names generated from the queried device count
+- Preserved discovery: exact 65-byte `EC B0` output request and LED count from input byte 32, including the native zero count on an empty read
+- Preserved initialization: exact 65-byte `EC 35` report with bytes 5 and 8 set to `FF` and `01`
+- Preserved output: dynamic `EC 40 84` per-LED RGB report with the LED count at byte 4 and RGB data starting at byte 5
+- Verification: four-model exact-match tests, query and initialization goldens, dynamic direct-packet golden, overflow rejection, model-shape test, executable read-only probe, workspace Clippy and tests
+- Deleted native files: `AsusMonitorController.cpp`, `AsusMonitorController.h`, `AsusMonitorControllerDetect.cpp`, `RGBController_AsusMonitor.cpp`, `RGBController_AsusMonitor.h`
+
+Physical supported ASUS monitor hardware was not present for this contraction.
+The family remains release-blocked by the global hardware-evidence policy until
+a matching device completes its live test.
