@@ -369,3 +369,20 @@ a matching device completes its live test.
 Physical Gigabyte AORUS C300 GLASS hardware was not present for this contraction.
 The family remains release-blocked by the global hardware-evidence policy until
 a matching device completes its live test.
+
+## ClevoLightbarController
+
+- Rust package: `openrustygb-driver-clevo-lightbar`
+- Device: CLEVO laptop lightbar using ITE 8291 revision 0.03
+- Match: VID `048D`, PID `7001`, usage `FF03:0002`; the native detector does not constrain interface
+- Preserved model: one Lightbar LED; Direct, Breathing, Wave, Bounce, Marquee, Scan, and Off modes; brightness `0..100`; UI speed `1..10`
+- Preserved output: exact 8-byte feature reports for color, mono brightness, hardware mode, and the four-report device-specific off sequence
+- Preserved behavior: color reports precede color-capable effects; Wave and Marquee send no color; UI speed is inverted to the device's `1=fastest, 10=slowest` encoding; Direct preserves the native default speed byte `11`
+- Preserved metadata: shared Rust HID inventory now carries the USB release number and formats firmware as native `major.minor` text such as `3.07`
+- Safety correction: mode-dependent brightness and speed values are validated before packet construction
+- Verification: product/usage matcher tests across arbitrary interfaces, Direct/Wave/off/brightness packet goldens, inverse-speed and bounds tests, firmware and model-shape tests, executable read-only probe and guarded hardware-mode command, workspace Clippy and tests
+- Deleted native files: `ClevoLightbarController.cpp`, `ClevoLightbarController.h`, `ClevoLightbarControllerDetect.cpp`, `RGBController_ClevoLightbar.cpp`, `RGBController_ClevoLightbar.h`
+
+Physical CLEVO Lightbar hardware was not present for this contraction. The
+family remains release-blocked by the global hardware-evidence policy until a
+matching device completes its live test.

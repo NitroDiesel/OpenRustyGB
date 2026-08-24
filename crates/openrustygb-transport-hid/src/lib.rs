@@ -64,6 +64,7 @@ fn to_endpoint_info(info: &hidapi::DeviceInfo) -> HidEndpointInfo {
         info.product_string().map(Arc::from),
         info.serial_number().map(Arc::from),
     )
+    .with_release_number(info.release_number())
 }
 
 #[derive(Debug)]

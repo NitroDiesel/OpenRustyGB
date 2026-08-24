@@ -90,6 +90,7 @@ dependencies = [
  "openrustygb-driver-api",
  "openrustygb-driver-areson-mice",
  "openrustygb-driver-asus-monitor",
+ "openrustygb-driver-clevo-lightbar",
  "openrustygb-driver-dark-project-kd3b-v2",
  "openrustygb-driver-dream-cheeky-webmail-notifier",
  "openrustygb-driver-elgato-stream-deck-mk2",
@@ -142,6 +143,14 @@ dependencies = [
 
 [[package]]
 name = "openrustygb-driver-asus-monitor"
+version = "0.0.1"
+dependencies = [
+ "openrustygb-domain",
+ "openrustygb-driver-api",
+]
+
+[[package]]
+name = "openrustygb-driver-clevo-lightbar"
 version = "0.0.1"
 dependencies = [
  "openrustygb-domain",

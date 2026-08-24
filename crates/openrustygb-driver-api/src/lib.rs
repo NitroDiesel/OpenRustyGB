@@ -11,6 +11,7 @@ pub struct HidEndpointInfo {
     pub interface_number: i32,
     pub usage_page: u16,
     pub usage: u16,
+    pub release_number: u16,
     pub manufacturer: Option<Arc<str>>,
     pub product: Option<Arc<str>>,
     pub serial_number: Option<Arc<str>>,
@@ -37,10 +38,17 @@ impl HidEndpointInfo {
             interface_number,
             usage_page,
             usage,
+            release_number: 0,
             manufacturer,
             product,
             serial_number,
         }
+    }
+
+    #[must_use]
+    pub const fn with_release_number(mut self, release_number: u16) -> Self {
+        self.release_number = release_number;
+        self
     }
 
     #[must_use]

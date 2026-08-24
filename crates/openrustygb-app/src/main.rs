@@ -23,6 +23,11 @@ use openrustygb_driver_asus_monitor::{
     LedCountQuery as AsusMonitorLedCountQuery, REPORT_LEN as ASUS_MONITOR_REPORT_LEN,
     match_model as match_asus_monitor,
 };
+use openrustygb_driver_clevo_lightbar::{
+    ClevoMode, FEATURE_REPORT_LEN as CLEVO_REPORT_LEN, InvalidSettings as ClevoInvalidSettings,
+    MATCH as CLEVO_MATCH, ModeTransaction as ClevoModeTransaction,
+    firmware_version as clevo_firmware_version, matches as matches_clevo,
+};
 use openrustygb_driver_dark_project_kd3b_v2::{
     InvalidColorCount as DarkProjectInvalidColorCount, LED_COUNT as DARK_PROJECT_LED_COUNT,
     MATCH as DARK_PROJECT_MATCH, OUTPUT_REPORT_LEN as DARK_PROJECT_REPORT_LEN,
@@ -142,6 +147,7 @@ fn dispatch_probe(args: &[String]) -> Option<Result<(), Box<dyn Error>>> {
         [] => Some(probe()),
         [command] if command == "probe-aoc-amm700" => Some(probe_aoc()),
         [command] if command == "probe-asus-monitor" => Some(probe_asus_monitor()),
+        [command] if command == "probe-clevo-lightbar" => Some(probe_clevo()),
         [command] if command == "probe-areson" => Some(probe_areson()),
         [command] if command == "probe-redragon" => Some(probe_redragon()),
         [command] if command == "probe-haste2" => Some(probe()),
@@ -213,6 +219,31 @@ fn probe_aorus_case() -> Result<(), Box<dyn Error>> {
                 endpoint.interface_number,
                 endpoint.usage_page,
                 endpoint.usage
+            );
+        }
+    }
+    println!("Probe completed without opening a device or writing a report.");
+    Ok(())
+}
+
+fn probe_clevo() -> Result<(), Box<dyn Error>> {
+    let endpoints = HidInventory::enumerate()?;
+    let exact: Vec<_> = endpoints
+        .iter()
+        .filter(|endpoint| matches_clevo(endpoint))
+        .collect();
+    if exact.is_empty() {
+        println!("No exact CLEVO Lightbar endpoint found.");
+    } else {
+        for endpoint in exact {
+            println!(
+                "Found CLEVO Lightbar endpoint: {:04X}:{:04X}, interface {}, usage {:04X}:{:04X}, firmware {}",
+                endpoint.vendor_id,
+                endpoint.product_id,
+                endpoint.interface_number,
+                endpoint.usage_page,
+                endpoint.usage,
+                clevo_firmware_version(endpoint.release_number)
             );
         }
     }
@@ -528,6 +559,9 @@ fn dispatch_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
     if dispatch_aorus_case_write(args)? {
         return Ok(true);
     }
+    if dispatch_clevo_write(args)? {
+        return Ok(true);
+    }
     if dispatch_variable_write(args)? {
         return Ok(true);
     }
@@ -714,6 +748,22 @@ fn dispatch_aorus_case_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
     Ok(true)
 }
 
+fn dispatch_clevo_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
+    let [command, confirmation, mode, color, brightness, speed] = args else {
+        return Ok(false);
+    };
+    if command != "set-clevo-lightbar" || confirmation != "--confirm-reversible-write" {
+        return Ok(false);
+    }
+    set_clevo_mode(ClevoCommand {
+        mode: parse_clevo_mode(mode)?,
+        color: parse_rgb(color)?,
+        brightness: parse_u8_decimal(brightness, "brightness")?,
+        speed: parse_u8_decimal(speed, "speed")?,
+    })?;
+    Ok(true)
+}
+
 fn dispatch_variable_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
     if dispatch_per_led_write(args)? {
         return Ok(true);
@@ -834,6 +884,7 @@ fn print_usage() {
     eprintln!(
         "Usage:\n  openrustygb probe-aoc-amm700\n  openrustygb probe-aorus-m2\n  openrustygb probe-asus-monitor\n  openrustygb probe-haste2\n  \
          openrustygb probe-aorus-case\n  \
+         openrustygb probe-clevo-lightbar\n  \
          openrustygb probe-areson\n  \
          openrustygb probe-redragon\n  \
          openrustygb probe-dream-cheeky\n  \
@@ -863,6 +914,9 @@ fn print_usage() {
          RRGGBB <brightness> <speed>\n  \
          openrustygb set-aorus-case --confirm-reversible-write \
          <custom|off|breathing|spectrum|flashing|double-flashing> \
+         RRGGBB <brightness> <speed>\n  \
+         openrustygb set-clevo-lightbar --confirm-reversible-write \
+         <direct|breathing|wave|bounce|marquee|scan|off> \
          RRGGBB <brightness> <speed>\n  \
          openrustygb set-areson --confirm-reversible-write \
          <static|rainbow-wave|breathing|spectrum|single-color-wave|colorful-breathing|off> \
@@ -1745,6 +1799,34 @@ fn set_aorus_case_mode(command: AorusCaseCommand) -> Result<(), Box<dyn Error>> 
         }
     }
     println!("Applied one reversible Gigabyte AORUS C300 GLASS mode transaction.");
+    Ok(())
+}
+
+fn set_clevo_mode(command: ClevoCommand) -> Result<(), Box<dyn Error>> {
+    let endpoints = HidInventory::enumerate()?;
+    let mut exact = endpoints.into_iter().filter(matches_clevo);
+    let endpoint = exact
+        .next()
+        .ok_or("exact CLEVO Lightbar endpoint not found")?;
+    if exact.next().is_some() {
+        return Err("more than one CLEVO Lightbar endpoint found; refusing to choose".into());
+    }
+    let output = HidOutput::<CLEVO_REPORT_LEN>::open_matching(&endpoint, CLEVO_MATCH)?;
+    let target = ControllerRef {
+        id: ControllerId::new(NonZeroU64::new(25).expect("twenty-five is non-zero")),
+        incarnation: Incarnation::new(NonZeroU32::new(1).expect("one is non-zero")),
+    };
+    let actor = ControllerActor::start(target, ClevoBackend { output }, 4)?;
+    let outcome = actor.submit_barrier(target, command)?.wait()?;
+    actor.shutdown()?;
+    match outcome {
+        CommandOutcome::Applied { .. } => {}
+        CommandOutcome::Failed { error, .. } => return Err(error.into()),
+        CommandOutcome::Superseded { .. } => {
+            return Err("CLEVO Lightbar mode command was unexpectedly superseded".into());
+        }
+    }
+    println!("Applied one reversible CLEVO Lightbar mode transaction.");
     Ok(())
 }
 
@@ -2807,6 +2889,64 @@ impl ControllerBackend for AorusCaseBackend {
 }
 
 #[derive(Clone, Copy, Debug)]
+struct ClevoCommand {
+    mode: ClevoMode,
+    color: Rgb8,
+    brightness: u8,
+    speed: u8,
+}
+
+#[derive(Debug)]
+struct ClevoBackend {
+    output: HidOutput<CLEVO_REPORT_LEN>,
+}
+
+#[derive(Debug)]
+enum ClevoBackendError {
+    Settings(ClevoInvalidSettings),
+    Output(HidTransportError),
+}
+
+impl fmt::Display for ClevoBackendError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Settings(error) => write!(f, "invalid CLEVO Lightbar mode: {error}"),
+            Self::Output(error) => write!(f, "could not apply CLEVO Lightbar mode: {error}"),
+        }
+    }
+}
+
+impl Error for ClevoBackendError {}
+
+impl ControllerBackend for ClevoBackend {
+    type Barrier = ClevoCommand;
+    type Error = ClevoBackendError;
+
+    fn apply_whole_color(&mut self, color: Rgb8) -> Result<(), Self::Error> {
+        ClevoModeTransaction::new(ClevoMode::Direct, color, 100, 0)
+            .map_err(ClevoBackendError::Settings)?
+            .apply(&mut self.output)
+            .map_err(ClevoBackendError::Output)
+    }
+
+    fn apply_barrier(&mut self, command: Self::Barrier) -> Result<(), Self::Error> {
+        ClevoModeTransaction::new(
+            command.mode,
+            command.color,
+            command.brightness,
+            command.speed,
+        )
+        .map_err(ClevoBackendError::Settings)?
+        .apply(&mut self.output)
+        .map_err(ClevoBackendError::Output)
+    }
+
+    fn shutdown(&mut self) -> Result<(), Self::Error> {
+        Ok(())
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
 struct AocCommand {
     mode: AocMode,
     color: Rgb8,
@@ -3106,6 +3246,19 @@ fn parse_aorus_case_mode(input: &str) -> Result<AorusCaseMode, Box<dyn Error>> {
         "flashing" => Ok(AorusCaseMode::Flashing),
         "double-flashing" => Ok(AorusCaseMode::DoubleFlashing),
         _ => Err("unknown Gigabyte AORUS case mode".into()),
+    }
+}
+
+fn parse_clevo_mode(input: &str) -> Result<ClevoMode, Box<dyn Error>> {
+    match input {
+        "direct" => Ok(ClevoMode::Direct),
+        "breathing" => Ok(ClevoMode::Breathing),
+        "wave" => Ok(ClevoMode::Wave),
+        "bounce" => Ok(ClevoMode::Bounce),
+        "marquee" => Ok(ClevoMode::Marquee),
+        "scan" => Ok(ClevoMode::Scan),
+        "off" => Ok(ClevoMode::Off),
+        _ => Err("unknown CLEVO Lightbar mode".into()),
     }
 }
 
