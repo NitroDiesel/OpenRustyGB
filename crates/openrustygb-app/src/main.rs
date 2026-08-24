@@ -30,6 +30,11 @@ use openrustygb_driver_gamesir_nova_lite_2::{
     MATCH as GAMESIR_MATCH, OUTPUT_REPORT_LEN as GAMESIR_REPORT_LEN,
     StaticColorTransaction as GameSirColorTransaction, matches as matches_gamesir,
 };
+use openrustygb_driver_gigabyte_aorus_m2::{
+    AorusMode, DirectColorTransaction as AorusDirectColorTransaction,
+    FEATURE_REPORT_LEN as AORUS_REPORT_LEN, InvalidSettings as AorusInvalidSettings,
+    MATCH as AORUS_MATCH, ModeTransaction as AorusModeTransaction, matches as matches_aorus,
+};
 use openrustygb_driver_hyperx_mousemat::{
     DirectColorTransaction as HyperXMousematColorTransaction,
     FEATURE_REPORT_LEN as HYPERX_MOUSEMAT_REPORT_LEN, HyperXMousematModel,
@@ -107,6 +112,7 @@ fn dispatch_probe(args: &[String]) -> Option<Result<(), Box<dyn Error>>> {
         [command] if command == "probe-haste2" => Some(probe()),
         [command] if command == "probe-dream-cheeky" => Some(probe_dream()),
         [command] if command == "probe-gamesir" => Some(probe_gamesir()),
+        [command] if command == "probe-aorus-m2" => Some(probe_aorus()),
         [command] if command == "probe-hyperx-mousemat" => Some(probe_hyperx_mousemat()),
         [command] if command == "probe-lego-toypad" => Some(probe_lego()),
         [command] if command == "probe-lexip" => Some(probe_lexip()),
@@ -124,6 +130,30 @@ fn dispatch_probe(args: &[String]) -> Option<Result<(), Box<dyn Error>>> {
         }
         _ => None,
     }
+}
+
+fn probe_aorus() -> Result<(), Box<dyn Error>> {
+    let endpoints = HidInventory::enumerate()?;
+    let exact: Vec<_> = endpoints
+        .iter()
+        .filter(|endpoint| matches_aorus(endpoint))
+        .collect();
+    if exact.is_empty() {
+        println!("No exact Gigabyte Aorus M2 lighting endpoint found.");
+    } else {
+        for endpoint in exact {
+            println!(
+                "Found Gigabyte Aorus M2 endpoint: {:04X}:{:04X}, interface {}, usage {:04X}:{:04X}",
+                endpoint.vendor_id,
+                endpoint.product_id,
+                endpoint.interface_number,
+                endpoint.usage_page,
+                endpoint.usage
+            );
+        }
+    }
+    println!("Probe completed without opening a device or writing a report.");
+    Ok(())
 }
 
 fn probe_aoc() -> Result<(), Box<dyn Error>> {
@@ -359,6 +389,17 @@ fn dispatch_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
 
 fn dispatch_variable_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
     match args {
+        [command, confirmation, mode, color, brightness, speed]
+            if command == "set-aorus-m2" && confirmation == "--confirm-reversible-write" =>
+        {
+            set_aorus_mode(AorusCommand {
+                mode: parse_aorus_mode(mode)?,
+                color: parse_rgb(color)?,
+                brightness: parse_u8_decimal(brightness, "brightness")?,
+                speed: parse_u8_decimal(speed, "speed")?,
+            })?;
+            Ok(true)
+        }
         [
             command,
             confirmation,
@@ -447,7 +488,7 @@ fn dispatch_variable_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
 
 fn print_usage() {
     eprintln!(
-        "Usage:\n  openrustygb probe-aoc-amm700\n  openrustygb probe-asus-monitor\n  openrustygb probe-haste2\n  \
+        "Usage:\n  openrustygb probe-aoc-amm700\n  openrustygb probe-aorus-m2\n  openrustygb probe-asus-monitor\n  openrustygb probe-haste2\n  \
          openrustygb probe-dream-cheeky\n  \
          openrustygb probe-gamesir\n  \
          openrustygb probe-hyperx-mousemat\n  \
@@ -466,6 +507,9 @@ fn print_usage() {
          openrustygb set-aoc-amm700 --confirm-reversible-write \
          <static|spectrum|breathing|breathing-random|flashing|flashing-random|wave|rainbow-wave> \
          RRGGBB <brightness> <speed> <cw|ccw>\n  \
+         openrustygb set-aorus-m2 --confirm-reversible-write \
+         <direct|static|breathing|spectrum|flashing|double-flash|off> \
+         RRGGBB <brightness> <speed>\n  \
          openrustygb set-haste2-color --confirm-reversible-write RRGGBB\n  \
          openrustygb set-hyperx-mousemat --confirm-reversible-write <RRGGBB...>\n  \
          openrustygb set-lego-toypad --confirm-reversible-write direct \
@@ -1281,6 +1325,34 @@ fn set_aoc_mode(command: AocCommand) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+fn set_aorus_mode(command: AorusCommand) -> Result<(), Box<dyn Error>> {
+    let endpoints = HidInventory::enumerate()?;
+    let mut exact = endpoints.into_iter().filter(matches_aorus);
+    let endpoint = exact
+        .next()
+        .ok_or("exact Gigabyte Aorus M2 lighting endpoint not found")?;
+    if exact.next().is_some() {
+        return Err("more than one Aorus M2 endpoint found; refusing to choose".into());
+    }
+    let output = HidOutput::<AORUS_REPORT_LEN>::open_matching(&endpoint, AORUS_MATCH)?;
+    let target = ControllerRef {
+        id: ControllerId::new(NonZeroU64::new(17).expect("seventeen is non-zero")),
+        incarnation: Incarnation::new(NonZeroU32::new(1).expect("one is non-zero")),
+    };
+    let actor = ControllerActor::start(target, AorusBackend { output }, 4)?;
+    let outcome = actor.submit_barrier(target, command)?.wait()?;
+    actor.shutdown()?;
+    match outcome {
+        CommandOutcome::Applied { .. } => {}
+        CommandOutcome::Failed { error, .. } => return Err(error.into()),
+        CommandOutcome::Superseded { .. } => {
+            return Err("Aorus mode command was unexpectedly superseded".into());
+        }
+    }
+    println!("Applied one reversible Gigabyte Aorus M2 mode transaction.");
+    Ok(())
+}
+
 #[derive(Debug)]
 struct Haste2Backend {
     output: HidOutput<OUTPUT_REPORT_LEN>,
@@ -1719,6 +1791,69 @@ impl ControllerBackend for HyperXMousematBackend {
 }
 
 #[derive(Clone, Copy, Debug)]
+struct AorusCommand {
+    mode: AorusMode,
+    color: Rgb8,
+    brightness: u8,
+    speed: u8,
+}
+
+#[derive(Debug)]
+struct AorusBackend {
+    output: HidOutput<AORUS_REPORT_LEN>,
+}
+
+#[derive(Debug)]
+enum AorusBackendError {
+    Settings(AorusInvalidSettings),
+    Output(HidTransportError),
+}
+
+impl fmt::Display for AorusBackendError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Settings(error) => write!(f, "invalid Aorus M2 mode: {error}"),
+            Self::Output(error) => write!(f, "could not apply Aorus M2 mode: {error}"),
+        }
+    }
+}
+
+impl Error for AorusBackendError {}
+
+impl ControllerBackend for AorusBackend {
+    type Barrier = AorusCommand;
+    type Error = AorusBackendError;
+
+    fn apply_whole_color(&mut self, color: Rgb8) -> Result<(), Self::Error> {
+        AorusDirectColorTransaction::new(color)
+            .apply(&mut self.output)
+            .map_err(AorusBackendError::Output)
+    }
+
+    fn apply_barrier(&mut self, command: Self::Barrier) -> Result<(), Self::Error> {
+        AorusModeTransaction::new(
+            command.mode,
+            command.color,
+            command.brightness,
+            command.speed,
+        )
+        .map_err(AorusBackendError::Settings)?
+        .apply(&mut self.output)
+        .map_err(AorusBackendError::Output)?;
+        if command.mode == AorusMode::Direct {
+            AorusDirectColorTransaction::new(command.color)
+                .apply(&mut self.output)
+                .map_err(AorusBackendError::Output)?;
+        }
+        Ok(())
+    }
+
+    fn shutdown(&mut self) -> Result<(), Self::Error> {
+        Ok(())
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
 struct AocCommand {
     mode: AocMode,
     color: Rgb8,
@@ -1993,6 +2128,19 @@ fn parse_aoc_mode(input: &str) -> Result<AocMode, Box<dyn Error>> {
         "wave" => Ok(AocMode::Wave),
         "rainbow-wave" => Ok(AocMode::RainbowWave),
         _ => Err("unknown AOC AMM700 mode".into()),
+    }
+}
+
+fn parse_aorus_mode(input: &str) -> Result<AorusMode, Box<dyn Error>> {
+    match input {
+        "direct" => Ok(AorusMode::Direct),
+        "static" => Ok(AorusMode::Static),
+        "breathing" => Ok(AorusMode::Breathing),
+        "spectrum" => Ok(AorusMode::SpectrumCycle),
+        "flashing" => Ok(AorusMode::Flashing),
+        "double-flash" => Ok(AorusMode::DoubleFlash),
+        "off" => Ok(AorusMode::Off),
+        _ => Err("unknown Gigabyte Aorus M2 mode".into()),
     }
 }
 

@@ -22,6 +22,7 @@ members = [
     "crates/drivers/hyperx-mousemat",
     "crates/drivers/lego-dimensions-toypad",
     "crates/drivers/aoc-amm700-mousemat",
+    "crates/drivers/gigabyte-aorus-m2",
     "crates/openrustygb-app",
     "xtask",
 ]

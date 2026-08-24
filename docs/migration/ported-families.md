@@ -242,3 +242,18 @@ policy until a matching device completes its live test.
 Physical AOC AMM700 hardware was not present for this contraction. The family
 remains release-blocked by the global hardware-evidence policy until a matching
 device completes its live test.
+
+## GigabyteAorusMouseController
+
+- Rust package: `openrustygb-driver-gigabyte-aorus-m2`
+- Device: Gigabyte Aorus M2 mouse
+- Exact match: VID `1044`, PID `7A40`, interface `3`, usage page `FF01`, usage `0001`
+- Preserved model: one Mouse LED; Direct, Static, Breathing, Spectrum Cycle, Flashing, Double Flash, and Off modes; brightness `0..100`; inverse speed range `22..0` with default `11`
+- Preserved output: exact eight-byte `CD` direct-color and `CC` hardware-mode feature reports
+- Preserved behavior: Direct mode first sends the native Static hardware packet to apply brightness and then sends the Direct RGB packet; Off emits Static with black and zero brightness
+- Verification: exact matcher rejection tests, direct and mode packet goldens, Direct brightness and Off tests, bounds and model-shape tests, executable read-only probe and guarded mode command, workspace Clippy and tests
+- Deleted native files: `GigabyteAorusMouseController.cpp`, `GigabyteAorusMouseController.h`, `GigabyteAorusMouseControllerDetect.cpp`, `RGBController_GigabyteAorusMouse.cpp`, `RGBController_GigabyteAorusMouse.h`
+
+Physical Gigabyte Aorus M2 hardware was not present for this contraction. The
+family remains release-blocked by the global hardware-evidence policy until a
+matching device completes its live test.

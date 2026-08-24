@@ -86,6 +86,7 @@ dependencies = [
  "openrustygb-driver-dream-cheeky-webmail-notifier",
  "openrustygb-driver-faustus-keyboard",
  "openrustygb-driver-gamesir-nova-lite-2",
+ "openrustygb-driver-gigabyte-aorus-m2",
  "openrustygb-driver-hyperx-mousemat",
  "openrustygb-driver-hyperx-pulsefire-haste2",
  "openrustygb-driver-lego-dimensions-toypad",
@@ -143,6 +144,14 @@ dependencies = [
 
 [[package]]
 name = "openrustygb-driver-gamesir-nova-lite-2"
+version = "0.0.1"
+dependencies = [
+ "openrustygb-domain",
+ "openrustygb-driver-api",
+]
+
+[[package]]
+name = "openrustygb-driver-gigabyte-aorus-m2"
 version = "0.0.1"
 dependencies = [
  "openrustygb-domain",
