@@ -14,6 +14,10 @@ const PORTED_FAMILIES: &[(&str, &str)] = &[
     ("FaustusController", "faustus-keyboard"),
     ("HyperXMousematController", "hyperx-mousemat"),
     ("LexipMouseController", "lexip-np93-alpha"),
+    (
+        "LegoDimensionsToypadBaseController",
+        "lego-dimensions-toypad",
+    ),
     ("MadCatzCyborgController", "madcatz-cyborg-light"),
     ("MSI3ZoneController", "msi-3-zone-keyboard"),
     ("N5312AController", "n5312a-mouse"),
@@ -29,6 +33,7 @@ const PORTED_DETECTOR_SOURCES: &[&str] = &[
     "Controllers/GameSirController/GameSirControllerDetect.cpp",
     "Controllers/HyperXMousematController/HyperXMousematControllerDetect.cpp",
     "Controllers/LexipMouseController/LexipMouseControllerDetect.cpp",
+    "Controllers/LegoDimensionsToypadBaseController/LegoDimensionsToypadBaseControllerDetect.cpp",
     "Controllers/MadCatzCyborgController/MadCatzCyborgControllerDetect.cpp",
     "Controllers/MSI3ZoneController/MSI3ZoneControllerDetect.cpp",
     "Controllers/N5312AController/N5312AControllerDetect.cpp",

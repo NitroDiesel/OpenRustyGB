@@ -87,6 +87,7 @@ dependencies = [
  "openrustygb-driver-gamesir-nova-lite-2",
  "openrustygb-driver-hyperx-mousemat",
  "openrustygb-driver-hyperx-pulsefire-haste2",
+ "openrustygb-driver-lego-dimensions-toypad",
  "openrustygb-driver-lexip-np93-alpha",
  "openrustygb-driver-madcatz-cyborg-light",
  "openrustygb-driver-msi-3-zone-keyboard",
@@ -149,6 +150,14 @@ dependencies = [
 
 [[package]]
 name = "openrustygb-driver-hyperx-pulsefire-haste2"
+version = "0.0.1"
+dependencies = [
+ "openrustygb-domain",
+ "openrustygb-driver-api",
+]
+
+[[package]]
+name = "openrustygb-driver-lego-dimensions-toypad"
 version = "0.0.1"
 dependencies = [
  "openrustygb-domain",

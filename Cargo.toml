@@ -20,6 +20,7 @@ members = [
     "crates/drivers/asus-monitor",
     "crates/drivers/tecknet-m008",
     "crates/drivers/hyperx-mousemat",
+    "crates/drivers/lego-dimensions-toypad",
     "crates/openrustygb-app",
     "xtask",
 ]

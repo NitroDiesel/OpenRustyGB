@@ -33,6 +33,11 @@ use openrustygb_driver_hyperx_mousemat::{
 use openrustygb_driver_hyperx_pulsefire_haste2::{
     MATCH, OUTPUT_REPORT_LEN, WheelColorTransaction, matches,
 };
+use openrustygb_driver_lego_dimensions_toypad::{
+    Activation as LegoActivation, DirectColorTransaction as LegoDirectColorTransaction,
+    MATCH as LEGO_MATCH, ModeTransaction as LegoModeTransaction,
+    OUTPUT_REPORT_LEN as LEGO_REPORT_LEN, ToypadMode, matches as matches_lego,
+};
 use openrustygb_driver_lexip_np93_alpha::{
     DirectColorTransaction as LexipColorTransaction, MATCH as LEXIP_MATCH,
     OUTPUT_REPORT_LEN as LEXIP_REPORT_LEN, matches as matches_lexip,
@@ -97,6 +102,7 @@ fn dispatch_probe(args: &[String]) -> Option<Result<(), Box<dyn Error>>> {
         [command] if command == "probe-dream-cheeky" => Some(probe_dream()),
         [command] if command == "probe-gamesir" => Some(probe_gamesir()),
         [command] if command == "probe-hyperx-mousemat" => Some(probe_hyperx_mousemat()),
+        [command] if command == "probe-lego-toypad" => Some(probe_lego()),
         [command] if command == "probe-lexip" => Some(probe_lexip()),
         [command] if command == "probe-madcatz" => Some(probe_madcatz()),
         [command] if command == "probe-msi-3-zone" => Some(probe_msi()),
@@ -200,6 +206,30 @@ fn probe_hyperx_mousemat() -> Result<(), Box<dyn Error>> {
             println!(
                 "Found {} endpoint: {:04X}:{:04X}, interface {}, usage {:04X}:{:04X}",
                 model.name,
+                endpoint.vendor_id,
+                endpoint.product_id,
+                endpoint.interface_number,
+                endpoint.usage_page,
+                endpoint.usage
+            );
+        }
+    }
+    println!("Probe completed without opening a device or writing a report.");
+    Ok(())
+}
+
+fn probe_lego() -> Result<(), Box<dyn Error>> {
+    let endpoints = HidInventory::enumerate()?;
+    let exact: Vec<_> = endpoints
+        .iter()
+        .filter(|endpoint| matches_lego(endpoint))
+        .collect();
+    if exact.is_empty() {
+        println!("No Lego Dimensions Toypad Base endpoint found.");
+    } else {
+        for endpoint in exact {
+            println!(
+                "Found Lego Dimensions Toypad Base endpoint: {:04X}:{:04X}, interface {}, usage {:04X}:{:04X}",
                 endpoint.vendor_id,
                 endpoint.product_id,
                 endpoint.interface_number,
@@ -341,6 +371,28 @@ fn dispatch_variable_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
             set_hyperx_mousemat_colors(parse_rgb_colors(colors)?)?;
             Ok(true)
         }
+        [command, confirmation, mode, center, left, right]
+            if command == "set-lego-toypad"
+                && confirmation == "--confirm-reversible-write"
+                && mode == "direct" =>
+        {
+            set_lego_command(LegoCommand::Direct([
+                parse_rgb(center)?,
+                parse_rgb(left)?,
+                parse_rgb(right)?,
+            ]))?;
+            Ok(true)
+        }
+        [command, confirmation, mode, color, speed]
+            if command == "set-lego-toypad" && confirmation == "--confirm-reversible-write" =>
+        {
+            set_lego_command(LegoCommand::Effect {
+                mode: parse_lego_mode(mode)?,
+                color: parse_rgb(color)?,
+                speed: parse_u8_decimal(speed, "speed")?,
+            })?;
+            Ok(true)
+        }
         _ => Ok(false),
     }
 }
@@ -351,6 +403,7 @@ fn print_usage() {
          openrustygb probe-dream-cheeky\n  \
          openrustygb probe-gamesir\n  \
          openrustygb probe-hyperx-mousemat\n  \
+         openrustygb probe-lego-toypad\n  \
          openrustygb probe-lexip\n  \
          openrustygb probe-madcatz\n  \
          openrustygb probe-msi-3-zone\n  \
@@ -364,6 +417,10 @@ fn print_usage() {
          openrustygb set-asus-monitor --confirm-reversible-write <RRGGBB...>\n  \
          openrustygb set-haste2-color --confirm-reversible-write RRGGBB\n  \
          openrustygb set-hyperx-mousemat --confirm-reversible-write <RRGGBB...>\n  \
+         openrustygb set-lego-toypad --confirm-reversible-write direct \
+         <CENTER> <LEFT> <RIGHT>\n  \
+         openrustygb set-lego-toypad --confirm-reversible-write \
+         <flash|fade> RRGGBB <speed>\n  \
          openrustygb set-dream-cheeky-color --confirm-reversible-write RRGGBB\n  \
          openrustygb set-gamesir-color --confirm-reversible-write RRGGBB\n  \
          openrustygb set-lexip-color --confirm-reversible-write RRGGBB\n  \
@@ -1116,6 +1173,35 @@ fn set_hyperx_mousemat_colors(colors: Vec<Rgb8>) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+fn set_lego_command(command: LegoCommand) -> Result<(), Box<dyn Error>> {
+    let endpoints = HidInventory::enumerate()?;
+    let mut exact = endpoints.into_iter().filter(matches_lego);
+    let endpoint = exact
+        .next()
+        .ok_or("Lego Dimensions Toypad Base endpoint not found")?;
+    if exact.next().is_some() {
+        return Err("more than one Lego Toy Pad endpoint found; refusing to choose".into());
+    }
+    let mut output = HidOutput::<LEGO_REPORT_LEN>::open_matching(&endpoint, LEGO_MATCH)?;
+    LegoActivation::new().apply(&mut output)?;
+    let target = ControllerRef {
+        id: ControllerId::new(NonZeroU64::new(15).expect("fifteen is non-zero")),
+        incarnation: Incarnation::new(NonZeroU32::new(1).expect("one is non-zero")),
+    };
+    let actor = ControllerActor::start(target, LegoBackend { output }, 4)?;
+    let outcome = actor.submit_barrier(target, command)?.wait()?;
+    actor.shutdown()?;
+    match outcome {
+        CommandOutcome::Applied { .. } => {}
+        CommandOutcome::Failed { error, .. } => return Err(error.into()),
+        CommandOutcome::Superseded { .. } => {
+            return Err("Lego command was unexpectedly superseded".into());
+        }
+    }
+    println!("Applied one reversible Lego Dimensions Toy Pad lighting transaction.");
+    Ok(())
+}
+
 #[derive(Debug)]
 struct Haste2Backend {
     output: HidOutput<OUTPUT_REPORT_LEN>,
@@ -1553,6 +1639,45 @@ impl ControllerBackend for HyperXMousematBackend {
     }
 }
 
+#[derive(Clone, Copy, Debug)]
+enum LegoCommand {
+    Direct([Rgb8; 3]),
+    Effect {
+        mode: ToypadMode,
+        color: Rgb8,
+        speed: u8,
+    },
+}
+
+#[derive(Debug)]
+struct LegoBackend {
+    output: HidOutput<LEGO_REPORT_LEN>,
+}
+
+impl ControllerBackend for LegoBackend {
+    type Barrier = LegoCommand;
+    type Error = ExactWriteError<HidTransportError>;
+
+    fn apply_whole_color(&mut self, color: Rgb8) -> Result<(), Self::Error> {
+        LegoDirectColorTransaction::new([color; 3]).apply(&mut self.output)
+    }
+
+    fn apply_barrier(&mut self, command: Self::Barrier) -> Result<(), Self::Error> {
+        match command {
+            LegoCommand::Direct(colors) => {
+                LegoDirectColorTransaction::new(colors).apply(&mut self.output)
+            }
+            LegoCommand::Effect { mode, color, speed } => {
+                LegoModeTransaction::new(mode, speed, color).apply(&mut self.output)
+            }
+        }
+    }
+
+    fn shutdown(&mut self) -> Result<(), Self::Error> {
+        Ok(())
+    }
+}
+
 #[derive(Debug)]
 enum TecknetBackendError {
     Settings(TecknetInvalidSpeed),
@@ -1708,6 +1833,14 @@ fn parse_tecknet_mode(input: &str) -> Result<TecknetMode, Box<dyn Error>> {
         "off" => Ok(TecknetMode::Off),
         "breathing" => Ok(TecknetMode::Breathing),
         _ => Err("Tecknet mode must be direct, off, or breathing".into()),
+    }
+}
+
+fn parse_lego_mode(input: &str) -> Result<ToypadMode, Box<dyn Error>> {
+    match input {
+        "flash" => Ok(ToypadMode::Flash),
+        "fade" => Ok(ToypadMode::Fade),
+        _ => Err("Lego Toy Pad effect must be flash or fade".into()),
     }
 }
 

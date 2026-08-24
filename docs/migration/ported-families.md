@@ -212,3 +212,19 @@ device completes its live test.
 Physical supported HyperX mousemat hardware was not present for this
 contraction. The family remains release-blocked by the global hardware-evidence
 policy until a matching device completes its live test.
+
+## LegoDimensionsToypadBaseController
+
+- Rust package: `openrustygb-driver-lego-dimensions-toypad`
+- Device: Lego Dimensions Toypad Base
+- Match: VID `0E6F`, PID `0241`; the native detector accepts any interface and usage
+- Preserved model: LED strip with Center, Left, and Right single-LED zones; Direct, Flash value `C3`, and Fade value `C2` modes; effect speed range `0..255` with default `127`
+- Preserved initialization: exact 32-byte activation report containing the native `(c) LEGO 2014` payload and checksum `F7`
+- Preserved direct output: Center, Left, and Right 32-byte reports in order, with zone values `1..3`, `55 06 C0 02` command bytes, RGB, and wrapping checksum
+- Preserved effects: all-zone Flash and Fade reports with native timing, pulse count, RGB positions, and wrapping checksums
+- Verification: product-only matcher test, activation/direct/Flash/Fade packet goldens, zone-order and checksum tests, model-shape test, executable read-only probe, workspace Clippy and tests
+- Deleted native files: `LegoDimensionsToypadBaseController.cpp`, `LegoDimensionsToypadBaseController.h`, `LegoDimensionsToypadBaseControllerDetect.cpp`, `RGBController_LegoDimensionsToypadBase.cpp`, `RGBController_LegoDimensionsToypadBase.h`
+
+Physical Lego Dimensions Toypad Base hardware was not present for this
+contraction. The family remains release-blocked by the global hardware-evidence
+policy until a matching device completes its live test.
