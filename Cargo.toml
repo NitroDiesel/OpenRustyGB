@@ -32,6 +32,7 @@ members = [
     "crates/drivers/gigabyte-aorus-c300-glass",
     "crates/drivers/clevo-lightbar",
     "crates/drivers/skydimo-sk0902",
+    "crates/drivers/ek-loop-connect",
     "crates/openrustygb-app",
     "xtask",
 ]

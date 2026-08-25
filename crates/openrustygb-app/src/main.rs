@@ -37,6 +37,11 @@ use openrustygb_driver_dream_cheeky_webmail_notifier::{
     DirectColorTransaction as DreamColorTransaction, Initialization as DreamInitialization,
     MATCH as DREAM_MATCH, OUTPUT_REPORT_LEN as DREAM_REPORT_LEN, matches as matches_dream,
 };
+use openrustygb_driver_ek_loop_connect::{
+    EkMode, InvalidSpeed as EkInvalidSpeed, MATCH as EK_MATCH,
+    ModeTransaction as EkModeTransaction, OUTPUT_REPORT_LEN as EK_REPORT_LEN,
+    matches as matches_ek,
+};
 use openrustygb_driver_elgato_stream_deck_mk2::{
     BUTTON_COUNT as STREAM_DECK_BUTTON_COUNT, FrameBuildError as StreamDeckFrameBuildError,
     FullFrameTransaction as StreamDeckFrameTransaction, MATCH as STREAM_DECK_MATCH,
@@ -157,6 +162,7 @@ fn dispatch_probe(args: &[String]) -> Option<Result<(), Box<dyn Error>>> {
         [command] if command == "probe-redragon" => Some(probe_redragon()),
         [command] if command == "probe-haste2" => Some(probe()),
         [command] if command == "probe-dream-cheeky" => Some(probe_dream()),
+        [command] if command == "probe-ek-loop-connect" => Some(probe_ek()),
         [command] if command == "probe-dark-project" => Some(probe_dark_project()),
         [command] if command == "probe-stream-deck" => Some(probe_stream_deck()),
         [command] if command == "probe-sayo" => Some(probe_sayo()),
@@ -269,6 +275,30 @@ fn probe_skydimo() -> Result<(), Box<dyn Error>> {
         for endpoint in exact {
             println!(
                 "Found Skydimo SK0902 endpoint: {:04X}:{:04X}, interface {}, usage {:04X}:{:04X}",
+                endpoint.vendor_id,
+                endpoint.product_id,
+                endpoint.interface_number,
+                endpoint.usage_page,
+                endpoint.usage
+            );
+        }
+    }
+    println!("Probe completed without opening a device or writing a report.");
+    Ok(())
+}
+
+fn probe_ek() -> Result<(), Box<dyn Error>> {
+    let endpoints = HidInventory::enumerate()?;
+    let exact: Vec<_> = endpoints
+        .iter()
+        .filter(|endpoint| matches_ek(endpoint))
+        .collect();
+    if exact.is_empty() {
+        println!("No exact EK Loop Connect endpoint found.");
+    } else {
+        for endpoint in exact {
+            println!(
+                "Found EK Loop Connect endpoint: {:04X}:{:04X}, interface {}, usage {:04X}:{:04X}",
                 endpoint.vendor_id,
                 endpoint.product_id,
                 endpoint.interface_number,
@@ -574,25 +604,7 @@ fn probe_lego() -> Result<(), Box<dyn Error>> {
 }
 
 fn dispatch_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
-    if dispatch_wushi_write(args)? {
-        return Ok(true);
-    }
-    if dispatch_sayo_write(args)? {
-        return Ok(true);
-    }
-    if dispatch_areson_write(args)? {
-        return Ok(true);
-    }
-    if dispatch_redragon_write(args)? {
-        return Ok(true);
-    }
-    if dispatch_aorus_case_write(args)? {
-        return Ok(true);
-    }
-    if dispatch_clevo_write(args)? {
-        return Ok(true);
-    }
-    if dispatch_variable_write(args)? {
+    if dispatch_structured_write(args)? {
         return Ok(true);
     }
     match args {
@@ -674,6 +686,34 @@ fn dispatch_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
         _ => return Ok(false),
     }
     Ok(true)
+}
+
+fn dispatch_structured_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
+    if dispatch_wushi_write(args)? {
+        return Ok(true);
+    }
+    if dispatch_sayo_write(args)? {
+        return Ok(true);
+    }
+    if dispatch_areson_write(args)? {
+        return Ok(true);
+    }
+    if dispatch_redragon_write(args)? {
+        return Ok(true);
+    }
+    if dispatch_aorus_case_write(args)? {
+        return Ok(true);
+    }
+    if dispatch_clevo_write(args)? {
+        return Ok(true);
+    }
+    if dispatch_ek_write(args)? {
+        return Ok(true);
+    }
+    if dispatch_variable_write(args)? {
+        return Ok(true);
+    }
+    Ok(false)
 }
 
 fn dispatch_wushi_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
@@ -789,6 +829,21 @@ fn dispatch_clevo_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
         mode: parse_clevo_mode(mode)?,
         color: parse_rgb(color)?,
         brightness: parse_u8_decimal(brightness, "brightness")?,
+        speed: parse_u8_decimal(speed, "speed")?,
+    })?;
+    Ok(true)
+}
+
+fn dispatch_ek_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
+    let [command, confirmation, mode, color, speed] = args else {
+        return Ok(false);
+    };
+    if command != "set-ek-loop-connect" || confirmation != "--confirm-reversible-write" {
+        return Ok(false);
+    }
+    set_ek_mode(EkCommand {
+        mode: parse_ek_mode(mode)?,
+        color: parse_rgb(color)?,
         speed: parse_u8_decimal(speed, "speed")?,
     })?;
     Ok(true)
@@ -923,6 +978,7 @@ fn print_usage() {
          openrustygb probe-areson\n  \
          openrustygb probe-redragon\n  \
          openrustygb probe-dream-cheeky\n  \
+         openrustygb probe-ek-loop-connect\n  \
          openrustygb probe-dark-project\n  \
          openrustygb probe-stream-deck\n  \
          openrustygb probe-sayo\n  \
@@ -966,6 +1022,9 @@ fn print_usage() {
          openrustygb set-lego-toypad --confirm-reversible-write \
          <flash|fade> RRGGBB <speed>\n  \
          openrustygb set-dream-cheeky-color --confirm-reversible-write RRGGBB\n  \
+         openrustygb set-ek-loop-connect --confirm-reversible-write \
+         <static|breathing|fading|marquee|covering-marquee|pulse|spectrum-wave|alternating|candle> \
+         RRGGBB <speed>\n  \
          openrustygb set-dark-project --confirm-reversible-write <87-RRGGBB-colors>\n  \
          openrustygb set-stream-deck --confirm-reversible-write <15-RRGGBB-colors>\n  \
          openrustygb set-skydimo --confirm-reversible-write <49-RRGGBB-colors>\n  \
@@ -2021,6 +2080,34 @@ fn set_skydimo_colors(colors: Vec<Rgb8>) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+fn set_ek_mode(command: EkCommand) -> Result<(), Box<dyn Error>> {
+    let endpoints = HidInventory::enumerate()?;
+    let mut exact = endpoints.into_iter().filter(matches_ek);
+    let endpoint = exact
+        .next()
+        .ok_or("exact EK Loop Connect endpoint not found")?;
+    if exact.next().is_some() {
+        return Err("more than one EK Loop Connect endpoint found; refusing to choose".into());
+    }
+    let output = HidOutput::<EK_REPORT_LEN>::open_matching(&endpoint, EK_MATCH)?;
+    let target = ControllerRef {
+        id: ControllerId::new(NonZeroU64::new(27).expect("twenty-seven is non-zero")),
+        incarnation: Incarnation::new(NonZeroU32::new(1).expect("one is non-zero")),
+    };
+    let actor = ControllerActor::start(target, EkBackend { output }, 4)?;
+    let outcome = actor.submit_barrier(target, command)?.wait()?;
+    actor.shutdown()?;
+    match outcome {
+        CommandOutcome::Applied { .. } => {}
+        CommandOutcome::Failed { error, .. } => return Err(error.into()),
+        CommandOutcome::Superseded { .. } => {
+            return Err("EK Loop Connect mode command was unexpectedly superseded".into());
+        }
+    }
+    println!("Applied one reversible EK Loop Connect hardware-mode transaction.");
+    Ok(())
+}
+
 fn set_sayo(command: SayoCommand) -> Result<(), Box<dyn Error>> {
     let endpoints = HidInventory::enumerate()?;
     let mut exact = endpoints.into_iter().filter(matches_sayo);
@@ -2753,6 +2840,58 @@ impl ControllerBackend for SkydimoBackend {
 }
 
 #[derive(Clone, Copy, Debug)]
+struct EkCommand {
+    mode: EkMode,
+    color: Rgb8,
+    speed: u8,
+}
+
+#[derive(Debug)]
+struct EkBackend {
+    output: HidOutput<EK_REPORT_LEN>,
+}
+
+#[derive(Debug)]
+enum EkBackendError {
+    Settings(EkInvalidSpeed),
+    Output(ExactWriteError<HidTransportError>),
+}
+
+impl fmt::Display for EkBackendError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Settings(error) => write!(f, "invalid EK Loop Connect mode: {error}"),
+            Self::Output(error) => write!(f, "could not apply EK Loop Connect mode: {error}"),
+        }
+    }
+}
+
+impl Error for EkBackendError {}
+
+impl ControllerBackend for EkBackend {
+    type Barrier = EkCommand;
+    type Error = EkBackendError;
+
+    fn apply_whole_color(&mut self, color: Rgb8) -> Result<(), Self::Error> {
+        EkModeTransaction::new(EkMode::Static, color, 0)
+            .map_err(EkBackendError::Settings)?
+            .apply(&mut self.output)
+            .map_err(EkBackendError::Output)
+    }
+
+    fn apply_barrier(&mut self, command: Self::Barrier) -> Result<(), Self::Error> {
+        EkModeTransaction::new(command.mode, command.color, command.speed)
+            .map_err(EkBackendError::Settings)?
+            .apply(&mut self.output)
+            .map_err(EkBackendError::Output)
+    }
+
+    fn shutdown(&mut self) -> Result<(), Self::Error> {
+        Ok(())
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
 enum SayoCommand {
     Mode {
         mode: SayoMode,
@@ -3376,6 +3515,21 @@ fn parse_clevo_mode(input: &str) -> Result<ClevoMode, Box<dyn Error>> {
         "scan" => Ok(ClevoMode::Scan),
         "off" => Ok(ClevoMode::Off),
         _ => Err("unknown CLEVO Lightbar mode".into()),
+    }
+}
+
+fn parse_ek_mode(input: &str) -> Result<EkMode, Box<dyn Error>> {
+    match input {
+        "static" => Ok(EkMode::Static),
+        "breathing" => Ok(EkMode::Breathing),
+        "fading" => Ok(EkMode::Fading),
+        "marquee" => Ok(EkMode::Marquee),
+        "covering-marquee" => Ok(EkMode::CoveringMarquee),
+        "pulse" => Ok(EkMode::Pulse),
+        "spectrum-wave" => Ok(EkMode::SpectrumWave),
+        "alternating" => Ok(EkMode::Alternating),
+        "candle" => Ok(EkMode::Candle),
+        _ => Err("unknown EK Loop Connect mode".into()),
     }
 }
 

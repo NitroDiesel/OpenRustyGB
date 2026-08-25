@@ -16,6 +16,7 @@ openrustygb-driver-areson-mice = { path = "../drivers/areson-mice" }
 openrustygb-driver-dream-cheeky-webmail-notifier = { path = "../drivers/dream-cheeky-webmail-notifier" }
 openrustygb-driver-dark-project-kd3b-v2 = { path = "../drivers/dark-project-kd3b-v2" }
 openrustygb-driver-elgato-stream-deck-mk2 = { path = "../drivers/elgato-stream-deck-mk2" }
+openrustygb-driver-ek-loop-connect = { path = "../drivers/ek-loop-connect" }
 openrustygb-driver-faustus-keyboard = { path = "../drivers/faustus-keyboard" }
 openrustygb-driver-gamesir-nova-lite-2 = { path = "../drivers/gamesir-nova-lite-2" }
 openrustygb-driver-gigabyte-aorus-m2 = { path = "../drivers/gigabyte-aorus-m2" }

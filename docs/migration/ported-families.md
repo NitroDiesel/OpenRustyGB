@@ -403,3 +403,20 @@ matching device completes its live test.
 Physical Skydimo SK0902 hardware was not present for this contraction. The
 family remains release-blocked by the global hardware-evidence policy until a
 matching device completes its live test.
+
+## EKController
+
+- Rust package: `openrustygb-driver-ek-loop-connect`
+- Device: EK Loop Connect
+- Match: VID `0483`, PID `5750`, interface `0`, usage `FFA0:0001`
+- Preserved model: one Loop Connect LED; Static, Breathing, Fading, Marquee, Covering Marquee, Pulse, Spectrum_Wave, Alternating, and Candle modes; speed `0..8`
+- Preserved metadata: HID manufacturer and product strings form the displayed name, with `EK Loop Connect` as the fallback when either string is unavailable
+- Preserved output: exact 63-byte HID output report built from the native per-mode 16-byte templates, RGB at bytes `16..18`, speed at byte `14`, command override `10` at byte `10`, and trailer `FF 00` at bytes `47..48`
+- Preserved speed encoding: animated modes use the native lookup table `00,0C,19,25,32,3E,4B,57,64`; Static ignores speed and encodes zero
+- Safety correction: animated speeds are validated before indexing the native table, RGB state is deterministic, and short HID writes fail instead of being silently ignored
+- Verification: exact endpoint matcher tests, Static and Candle packet goldens, speed bounds and model-shape tests, executable read-only probe and guarded hardware-mode command, workspace Clippy and tests
+- Deleted native files: `EKController.cpp`, `EKController.h`, `EKControllerDetect.cpp`, `RGBController_EKController.cpp`, `RGBController_EKController.h`
+
+Physical EK Loop Connect hardware was not present for this contraction. The
+family remains release-blocked by the global hardware-evidence policy until a
+matching device completes its live test.
