@@ -81,6 +81,12 @@ use openrustygb_driver_lexip_np93_alpha::{
     DirectColorTransaction as LexipColorTransaction, MATCH as LEXIP_MATCH,
     OUTPUT_REPORT_LEN as LEXIP_REPORT_LEN, matches as matches_lexip,
 };
+use openrustygb_driver_luxafor_flag::{
+    DirectTransaction as LuxaforDirectTransaction, InvalidColorCount as LuxaforInvalidColorCount,
+    LED_COUNT as LUXAFOR_LED_COUNT, MATCH as LUXAFOR_MATCH,
+    OUTPUT_REPORT_LEN as LUXAFOR_REPORT_LEN, Pattern as LuxaforPattern,
+    PatternTransaction as LuxaforPatternTransaction, matches as matches_luxafor,
+};
 use openrustygb_driver_madcatz_cyborg_light::{
     DirectColorTransaction as MadCatzColorTransaction, EnableTransaction as MadCatzEnable,
     IntensityTransaction as MadCatzIntensity, MATCH as MADCATZ_MATCH,
@@ -173,6 +179,7 @@ fn dispatch_probe(args: &[String]) -> Option<Result<(), Box<dyn Error>>> {
         [command] if command == "probe-aorus-case" => Some(probe_aorus_case()),
         [command] if command == "probe-hyperx-mousemat" => Some(probe_hyperx_mousemat()),
         [command] if command == "probe-lego-toypad" => Some(probe_lego()),
+        [command] if command == "probe-luxafor" => Some(probe_luxafor()),
         [command] if command == "probe-lexip" => Some(probe_lexip()),
         [command] if command == "probe-madcatz" => Some(probe_madcatz()),
         [command] if command == "probe-msi-3-zone" => Some(probe_msi()),
@@ -299,6 +306,30 @@ fn probe_ek() -> Result<(), Box<dyn Error>> {
         for endpoint in exact {
             println!(
                 "Found EK Loop Connect endpoint: {:04X}:{:04X}, interface {}, usage {:04X}:{:04X}",
+                endpoint.vendor_id,
+                endpoint.product_id,
+                endpoint.interface_number,
+                endpoint.usage_page,
+                endpoint.usage
+            );
+        }
+    }
+    println!("Probe completed without opening a device or writing a report.");
+    Ok(())
+}
+
+fn probe_luxafor() -> Result<(), Box<dyn Error>> {
+    let endpoints = HidInventory::enumerate()?;
+    let exact: Vec<_> = endpoints
+        .iter()
+        .filter(|endpoint| matches_luxafor(endpoint))
+        .collect();
+    if exact.is_empty() {
+        println!("No Luxafor Flag endpoint found.");
+    } else {
+        for endpoint in exact {
+            println!(
+                "Found Luxafor Flag endpoint: {:04X}:{:04X}, interface {}, usage {:04X}:{:04X}",
                 endpoint.vendor_id,
                 endpoint.product_id,
                 endpoint.interface_number,
@@ -689,6 +720,9 @@ fn dispatch_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
 }
 
 fn dispatch_structured_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
+    if dispatch_luxafor_write(args)? {
+        return Ok(true);
+    }
     if dispatch_wushi_write(args)? {
         return Ok(true);
     }
@@ -714,6 +748,27 @@ fn dispatch_structured_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
         return Ok(true);
     }
     Ok(false)
+}
+
+fn dispatch_luxafor_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
+    match args {
+        [command, confirmation, mode, colors @ ..]
+            if command == "set-luxafor"
+                && confirmation == "--confirm-reversible-write"
+                && mode == "direct" =>
+        {
+            set_luxafor(LuxaforCommand::Direct(parse_rgb_colors(colors)?))?;
+        }
+        [command, confirmation, mode, pattern]
+            if command == "set-luxafor"
+                && confirmation == "--confirm-reversible-write"
+                && mode == "pattern" =>
+        {
+            set_luxafor(LuxaforCommand::Pattern(parse_luxafor_pattern(pattern)?))?;
+        }
+        _ => return Ok(false),
+    }
+    Ok(true)
 }
 
 fn dispatch_wushi_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
@@ -987,6 +1042,7 @@ fn print_usage() {
          openrustygb probe-gamesir\n  \
          openrustygb probe-hyperx-mousemat\n  \
          openrustygb probe-lego-toypad\n  \
+         openrustygb probe-luxafor\n  \
          openrustygb probe-lexip\n  \
          openrustygb probe-madcatz\n  \
          openrustygb probe-msi-3-zone\n  \
@@ -1021,6 +1077,9 @@ fn print_usage() {
          <CENTER> <LEFT> <RIGHT>\n  \
          openrustygb set-lego-toypad --confirm-reversible-write \
          <flash|fade> RRGGBB <speed>\n  \
+         openrustygb set-luxafor --confirm-reversible-write direct <6-RRGGBB-colors>\n  \
+         openrustygb set-luxafor --confirm-reversible-write pattern \
+         <traffic-lights|2|3|4|police|6|7|8>\n  \
          openrustygb set-dream-cheeky-color --confirm-reversible-write RRGGBB\n  \
          openrustygb set-ek-loop-connect --confirm-reversible-write \
          <static|breathing|fading|marquee|covering-marquee|pulse|spectrum-wave|alternating|candle> \
@@ -1811,6 +1870,32 @@ fn set_lego_command(command: LegoCommand) -> Result<(), Box<dyn Error>> {
         }
     }
     println!("Applied one reversible Lego Dimensions Toy Pad lighting transaction.");
+    Ok(())
+}
+
+fn set_luxafor(command: LuxaforCommand) -> Result<(), Box<dyn Error>> {
+    let endpoints = HidInventory::enumerate()?;
+    let mut exact = endpoints.into_iter().filter(matches_luxafor);
+    let endpoint = exact.next().ok_or("Luxafor Flag endpoint not found")?;
+    if exact.next().is_some() {
+        return Err("more than one Luxafor Flag endpoint found; refusing to choose".into());
+    }
+    let output = HidOutput::<LUXAFOR_REPORT_LEN>::open_matching(&endpoint, LUXAFOR_MATCH)?;
+    let target = ControllerRef {
+        id: ControllerId::new(NonZeroU64::new(28).expect("twenty-eight is non-zero")),
+        incarnation: Incarnation::new(NonZeroU32::new(1).expect("one is non-zero")),
+    };
+    let actor = ControllerActor::start(target, LuxaforBackend { output }, 4)?;
+    let outcome = actor.submit_barrier(target, command)?.wait()?;
+    actor.shutdown()?;
+    match outcome {
+        CommandOutcome::Applied { .. } => {}
+        CommandOutcome::Failed { error, .. } => return Err(error.into()),
+        CommandOutcome::Superseded { .. } => {
+            return Err("Luxafor command was unexpectedly superseded".into());
+        }
+    }
+    println!("Applied one reversible Luxafor Flag lighting transaction.");
     Ok(())
 }
 
@@ -3300,6 +3385,62 @@ impl ControllerBackend for LegoBackend {
     }
 }
 
+#[derive(Clone, Debug)]
+enum LuxaforCommand {
+    Direct(Vec<Rgb8>),
+    Pattern(LuxaforPattern),
+}
+
+#[derive(Debug)]
+struct LuxaforBackend {
+    output: HidOutput<LUXAFOR_REPORT_LEN>,
+}
+
+#[derive(Debug)]
+enum LuxaforBackendError {
+    Settings(LuxaforInvalidColorCount),
+    Output(ExactWriteError<HidTransportError>),
+}
+
+impl fmt::Display for LuxaforBackendError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Settings(error) => write!(f, "invalid Luxafor colors: {error}"),
+            Self::Output(error) => write!(f, "could not apply Luxafor command: {error}"),
+        }
+    }
+}
+
+impl Error for LuxaforBackendError {}
+
+impl ControllerBackend for LuxaforBackend {
+    type Barrier = LuxaforCommand;
+    type Error = LuxaforBackendError;
+
+    fn apply_whole_color(&mut self, color: Rgb8) -> Result<(), Self::Error> {
+        LuxaforDirectTransaction::new(&[color; LUXAFOR_LED_COUNT])
+            .map_err(LuxaforBackendError::Settings)?
+            .apply(&mut self.output)
+            .map_err(LuxaforBackendError::Output)
+    }
+
+    fn apply_barrier(&mut self, command: Self::Barrier) -> Result<(), Self::Error> {
+        match command {
+            LuxaforCommand::Direct(colors) => LuxaforDirectTransaction::new(&colors)
+                .map_err(LuxaforBackendError::Settings)?
+                .apply(&mut self.output)
+                .map_err(LuxaforBackendError::Output),
+            LuxaforCommand::Pattern(pattern) => LuxaforPatternTransaction::new(pattern)
+                .apply(&mut self.output)
+                .map_err(LuxaforBackendError::Output),
+        }
+    }
+
+    fn shutdown(&mut self) -> Result<(), Self::Error> {
+        Ok(())
+    }
+}
+
 #[derive(Debug)]
 enum TecknetBackendError {
     Settings(TecknetInvalidSpeed),
@@ -3463,6 +3604,20 @@ fn parse_lego_mode(input: &str) -> Result<ToypadMode, Box<dyn Error>> {
         "flash" => Ok(ToypadMode::Flash),
         "fade" => Ok(ToypadMode::Fade),
         _ => Err("Lego Toy Pad effect must be flash or fade".into()),
+    }
+}
+
+fn parse_luxafor_pattern(input: &str) -> Result<LuxaforPattern, Box<dyn Error>> {
+    match input {
+        "traffic-lights" => Ok(LuxaforPattern::TrafficLights),
+        "2" => Ok(LuxaforPattern::Pattern2),
+        "3" => Ok(LuxaforPattern::Pattern3),
+        "4" => Ok(LuxaforPattern::Pattern4),
+        "police" => Ok(LuxaforPattern::Police),
+        "6" => Ok(LuxaforPattern::Pattern6),
+        "7" => Ok(LuxaforPattern::Pattern7),
+        "8" => Ok(LuxaforPattern::Pattern8),
+        _ => Err("unknown Luxafor pattern".into()),
     }
 }
 

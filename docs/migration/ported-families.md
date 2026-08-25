@@ -420,3 +420,20 @@ matching device completes its live test.
 Physical EK Loop Connect hardware was not present for this contraction. The
 family remains release-blocked by the global hardware-evidence policy until a
 matching device completes its live test.
+
+## LuxaforController
+
+- Rust package: `openrustygb-driver-luxafor-flag`
+- Device: Luxafor Flag
+- Match: VID `04D8`, PID `F372`; the native detector does not constrain interface or usage
+- Preserved model: Flag and Rear zones with three LEDs each; Direct plus Traffic Lights, Pattern 2, Pattern 3, Pattern 4, Police, Pattern 6, Pattern 7, and Pattern 8
+- Preserved output: exact 9-byte HID reports with physical LED indices `1..6`; Direct uses mode `1`, fixed changing time `100`, and one packet per LED; patterns use mode `6`, pattern ID `1..8`, and repeat `255`
+- Preserved dormant protocol: Rust packet constructors retain the native Fade, Strobe, and Wave formats even though OpenRGB currently leaves those modes hidden
+- Preserved pseudo-modes: pattern description values remain `6 + (pattern << 8)`, matching the native controller's combined mode/type representation
+- Safety correction: Direct commands require all six colors and every HID write must accept the complete native report
+- Verification: product-only matcher tests, all five packet-format goldens, Direct physical-order and color-count tests, pseudo-mode and model-shape tests, executable read-only probe and guarded Direct/pattern commands, workspace Clippy and tests
+- Deleted native files: `LuxaforController.cpp`, `LuxaforController.h`, `LuxaforControllerDetect.cpp`, `RGBController_Luxafor.cpp`, `RGBController_Luxafor.h`
+
+Physical Luxafor Flag hardware was not present for this contraction. The family
+remains release-blocked by the global hardware-evidence policy until a matching
+device completes its live test.

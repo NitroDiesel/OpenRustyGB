@@ -33,6 +33,7 @@ members = [
     "crates/drivers/clevo-lightbar",
     "crates/drivers/skydimo-sk0902",
     "crates/drivers/ek-loop-connect",
+    "crates/drivers/luxafor-flag",
     "crates/openrustygb-app",
     "xtask",
 ]

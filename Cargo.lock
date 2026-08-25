@@ -103,6 +103,7 @@ dependencies = [
  "openrustygb-driver-hyperx-pulsefire-haste2",
  "openrustygb-driver-lego-dimensions-toypad",
  "openrustygb-driver-lexip-np93-alpha",
+ "openrustygb-driver-luxafor-flag",
  "openrustygb-driver-madcatz-cyborg-light",
  "openrustygb-driver-msi-3-zone-keyboard",
  "openrustygb-driver-n5312a-mouse",
@@ -249,6 +250,14 @@ dependencies = [
 
 [[package]]
 name = "openrustygb-driver-lexip-np93-alpha"
+version = "0.0.1"
+dependencies = [
+ "openrustygb-domain",
+ "openrustygb-driver-api",
+]
+
+[[package]]
+name = "openrustygb-driver-luxafor-flag"
 version = "0.0.1"
 dependencies = [
  "openrustygb-domain",
