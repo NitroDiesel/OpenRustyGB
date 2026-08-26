@@ -437,3 +437,20 @@ matching device completes its live test.
 Physical Luxafor Flag hardware was not present for this contraction. The family
 remains release-blocked by the global hardware-evidence policy until a matching
 device completes its live test.
+
+## AOCMouseController
+
+- Rust package: `openrustygb-driver-aoc-gm500-mouse`
+- Device: AOC GM500 mouse
+- Match: VID `3938`, PID `1179`, interface `1`, usage `FF19:FF19`
+- Preserved model: Logo and Scroll Wheel single-LED zones; Direct, Spectrum Cycle, Breathing, Flashing, Wave, Rainbow Wave, and DPI modes
+- Preserved mode variants: random-color Breathing and Flashing retain their native `80`-bit protocol variants even though upstream exposes them as a color behavior of the same displayed mode
+- Preserved output: exact 60-byte feature report, including both RGB triplets at bytes `51..56`, the native fixed fields and trailers, brightness `0..3`, reverse-ordered speed `3..1`, and clockwise/counter-clockwise direction
+- Preserved Direct behavior: Direct always uses native Static mode with high brightness, medium speed, and clockwise direction, matching `SendDirect`
+- Safety correction: mode settings are validated before report construction and writes are isolated to the exact lighting endpoint
+- Verification: exact endpoint matcher tests, Direct and random-mode packet goldens, brightness/speed bounds, DPI no-speed behavior, model-shape tests, executable read-only probe and guarded hardware-mode command, workspace Clippy and tests
+- Deleted native files: `AOCMouseController.cpp`, `AOCMouseController.h`, `AOCMouseControllerDetect.cpp`, `RGBController_AOCMouse.cpp`, `RGBController_AOCMouse.h`
+
+Physical AOC GM500 hardware was not present for this contraction. The family
+remains release-blocked by the global hardware-evidence policy until a matching
+device completes its live test.

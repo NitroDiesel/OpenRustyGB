@@ -12,6 +12,11 @@ use openrustygb_driver_aoc_amm700_mousemat::{
     InvalidSettings as AocInvalidSettings, MATCH as AOC_MATCH,
     ModeTransaction as AocModeTransaction, matches as matches_aoc,
 };
+use openrustygb_driver_aoc_gm500_mouse::{
+    AocMouseMode, Direction as AocMouseDirection, FEATURE_REPORT_LEN as AOC_MOUSE_REPORT_LEN,
+    InvalidSettings as AocMouseInvalidSettings, MATCH as AOC_MOUSE_MATCH,
+    ModeTransaction as AocMouseModeTransaction, matches as matches_aoc_mouse,
+};
 use openrustygb_driver_api::{ExactWriteError, PrefixTooLong};
 use openrustygb_driver_areson_mice::{
     AresonMode, FEATURE_REPORT_LEN as ARESON_REPORT_LEN, InvalidSettings as AresonInvalidSettings,
@@ -162,6 +167,7 @@ fn dispatch_probe(args: &[String]) -> Option<Result<(), Box<dyn Error>>> {
     match args {
         [] => Some(probe()),
         [command] if command == "probe-aoc-amm700" => Some(probe_aoc()),
+        [command] if command == "probe-aoc-gm500" => Some(probe_aoc_mouse()),
         [command] if command == "probe-asus-monitor" => Some(probe_asus_monitor()),
         [command] if command == "probe-clevo-lightbar" => Some(probe_clevo()),
         [command] if command == "probe-areson" => Some(probe_areson()),
@@ -512,6 +518,30 @@ fn probe_aoc() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+fn probe_aoc_mouse() -> Result<(), Box<dyn Error>> {
+    let endpoints = HidInventory::enumerate()?;
+    let exact: Vec<_> = endpoints
+        .iter()
+        .filter(|endpoint| matches_aoc_mouse(endpoint))
+        .collect();
+    if exact.is_empty() {
+        println!("No exact AOC GM500 lighting endpoint found.");
+    } else {
+        for endpoint in exact {
+            println!(
+                "Found AOC GM500 endpoint: {:04X}:{:04X}, interface {}, usage {:04X}:{:04X}",
+                endpoint.vendor_id,
+                endpoint.product_id,
+                endpoint.interface_number,
+                endpoint.usage_page,
+                endpoint.usage
+            );
+        }
+    }
+    println!("Probe completed without opening a device or writing a report.");
+    Ok(())
+}
+
 fn probe_nzxt() -> Result<(), Box<dyn Error>> {
     let endpoints = HidInventory::enumerate()?;
     let exact: Vec<_> = endpoints
@@ -720,6 +750,9 @@ fn dispatch_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
 }
 
 fn dispatch_structured_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
+    if dispatch_aoc_mouse_write(args)? {
+        return Ok(true);
+    }
     if dispatch_luxafor_write(args)? {
         return Ok(true);
     }
@@ -748,6 +781,33 @@ fn dispatch_structured_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
         return Ok(true);
     }
     Ok(false)
+}
+
+fn dispatch_aoc_mouse_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
+    let [
+        command,
+        confirmation,
+        mode,
+        logo,
+        wheel,
+        brightness,
+        speed,
+        direction,
+    ] = args
+    else {
+        return Ok(false);
+    };
+    if command != "set-aoc-gm500" || confirmation != "--confirm-reversible-write" {
+        return Ok(false);
+    }
+    set_aoc_mouse_mode(AocMouseCommand {
+        mode: parse_aoc_mouse_mode(mode)?,
+        colors: [parse_rgb(logo)?, parse_rgb(wheel)?],
+        brightness: parse_u8_decimal(brightness, "brightness")?,
+        speed: parse_u8_decimal(speed, "speed")?,
+        direction: parse_aoc_mouse_direction(direction)?,
+    })?;
+    Ok(true)
 }
 
 fn dispatch_luxafor_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
@@ -1027,7 +1087,7 @@ fn dispatch_per_led_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
 
 fn print_usage() {
     eprintln!(
-        "Usage:\n  openrustygb probe-aoc-amm700\n  openrustygb probe-aorus-m2\n  openrustygb probe-asus-monitor\n  openrustygb probe-haste2\n  \
+        "Usage:\n  openrustygb probe-aoc-amm700\n  openrustygb probe-aoc-gm500\n  openrustygb probe-aorus-m2\n  openrustygb probe-asus-monitor\n  openrustygb probe-haste2\n  \
          openrustygb probe-aorus-case\n  \
          openrustygb probe-clevo-lightbar\n  \
          openrustygb probe-areson\n  \
@@ -1057,6 +1117,9 @@ fn print_usage() {
          openrustygb set-aoc-amm700 --confirm-reversible-write \
          <static|spectrum|breathing|breathing-random|flashing|flashing-random|wave|rainbow-wave> \
          RRGGBB <brightness> <speed> <cw|ccw>\n  \
+         openrustygb set-aoc-gm500 --confirm-reversible-write \
+         <direct|spectrum|breathing|breathing-random|flashing|flashing-random|wave|rainbow-wave|dpi> \
+         <LOGO-RRGGBB> <WHEEL-RRGGBB> <brightness> <speed> <cw|ccw>\n  \
          openrustygb set-aorus-m2 --confirm-reversible-write \
          <direct|static|breathing|spectrum|flashing|double-flash|off> \
          RRGGBB <brightness> <speed>\n  \
@@ -1924,6 +1987,34 @@ fn set_aoc_mode(command: AocCommand) -> Result<(), Box<dyn Error>> {
         }
     }
     println!("Applied one reversible AOC AGON AMM700 mode transaction.");
+    Ok(())
+}
+
+fn set_aoc_mouse_mode(command: AocMouseCommand) -> Result<(), Box<dyn Error>> {
+    let endpoints = HidInventory::enumerate()?;
+    let mut exact = endpoints.into_iter().filter(matches_aoc_mouse);
+    let endpoint = exact
+        .next()
+        .ok_or("exact AOC GM500 lighting endpoint not found")?;
+    if exact.next().is_some() {
+        return Err("more than one AOC GM500 endpoint found; refusing to choose".into());
+    }
+    let output = HidOutput::<AOC_MOUSE_REPORT_LEN>::open_matching(&endpoint, AOC_MOUSE_MATCH)?;
+    let target = ControllerRef {
+        id: ControllerId::new(NonZeroU64::new(29).expect("twenty-nine is non-zero")),
+        incarnation: Incarnation::new(NonZeroU32::new(1).expect("one is non-zero")),
+    };
+    let actor = ControllerActor::start(target, AocMouseBackend { output }, 4)?;
+    let outcome = actor.submit_barrier(target, command)?.wait()?;
+    actor.shutdown()?;
+    match outcome {
+        CommandOutcome::Applied { .. } => {}
+        CommandOutcome::Failed { error, .. } => return Err(error.into()),
+        CommandOutcome::Superseded { .. } => {
+            return Err("AOC GM500 mode command was unexpectedly superseded".into());
+        }
+    }
+    println!("Applied one reversible AOC GM500 mode transaction.");
     Ok(())
 }
 
@@ -3296,6 +3387,70 @@ struct AocCommand {
     direction: AocDirection,
 }
 
+#[derive(Clone, Copy, Debug)]
+struct AocMouseCommand {
+    mode: AocMouseMode,
+    colors: [Rgb8; 2],
+    brightness: u8,
+    speed: u8,
+    direction: AocMouseDirection,
+}
+
+#[derive(Debug)]
+struct AocMouseBackend {
+    output: HidOutput<AOC_MOUSE_REPORT_LEN>,
+}
+
+#[derive(Debug)]
+enum AocMouseBackendError {
+    Settings(AocMouseInvalidSettings),
+    Output(HidTransportError),
+}
+
+impl fmt::Display for AocMouseBackendError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Settings(error) => write!(f, "invalid AOC GM500 mode: {error}"),
+            Self::Output(error) => write!(f, "could not apply AOC GM500 mode: {error}"),
+        }
+    }
+}
+
+impl Error for AocMouseBackendError {}
+
+impl ControllerBackend for AocMouseBackend {
+    type Barrier = AocMouseCommand;
+    type Error = AocMouseBackendError;
+
+    fn apply_whole_color(&mut self, color: Rgb8) -> Result<(), Self::Error> {
+        AocMouseModeTransaction::direct([color; 2])
+            .apply(&mut self.output)
+            .map_err(AocMouseBackendError::Output)
+    }
+
+    fn apply_barrier(&mut self, command: Self::Barrier) -> Result<(), Self::Error> {
+        let transaction = if command.mode == AocMouseMode::Static {
+            AocMouseModeTransaction::direct(command.colors)
+        } else {
+            AocMouseModeTransaction::new(
+                command.mode,
+                command.colors,
+                command.brightness,
+                command.speed,
+                command.direction,
+            )
+            .map_err(AocMouseBackendError::Settings)?
+        };
+        transaction
+            .apply(&mut self.output)
+            .map_err(AocMouseBackendError::Output)
+    }
+
+    fn shutdown(&mut self) -> Result<(), Self::Error> {
+        Ok(())
+    }
+}
+
 #[derive(Debug)]
 struct AocBackend {
     output: HidOutput<AOC_REPORT_LEN>,
@@ -3632,6 +3787,29 @@ fn parse_aoc_mode(input: &str) -> Result<AocMode, Box<dyn Error>> {
         "wave" => Ok(AocMode::Wave),
         "rainbow-wave" => Ok(AocMode::RainbowWave),
         _ => Err("unknown AOC AMM700 mode".into()),
+    }
+}
+
+fn parse_aoc_mouse_mode(input: &str) -> Result<AocMouseMode, Box<dyn Error>> {
+    match input {
+        "direct" => Ok(AocMouseMode::Static),
+        "spectrum" => Ok(AocMouseMode::SpectrumCycle),
+        "breathing" => Ok(AocMouseMode::Breathing),
+        "breathing-random" => Ok(AocMouseMode::BreathingRandom),
+        "flashing" => Ok(AocMouseMode::Flashing),
+        "flashing-random" => Ok(AocMouseMode::FlashingRandom),
+        "wave" => Ok(AocMouseMode::Wave),
+        "rainbow-wave" => Ok(AocMouseMode::RainbowWave),
+        "dpi" => Ok(AocMouseMode::Dpi),
+        _ => Err("unknown AOC GM500 mode".into()),
+    }
+}
+
+fn parse_aoc_mouse_direction(input: &str) -> Result<AocMouseDirection, Box<dyn Error>> {
+    match input {
+        "cw" => Ok(AocMouseDirection::Clockwise),
+        "ccw" => Ok(AocMouseDirection::CounterClockwise),
+        _ => Err("AOC GM500 direction must be cw or ccw".into()),
     }
 }
 

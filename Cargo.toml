@@ -22,6 +22,7 @@ members = [
     "crates/drivers/hyperx-mousemat",
     "crates/drivers/lego-dimensions-toypad",
     "crates/drivers/aoc-amm700-mousemat",
+    "crates/drivers/aoc-gm500-mouse",
     "crates/drivers/gigabyte-aorus-m2",
     "crates/drivers/dark-project-kd3b-v2",
     "crates/drivers/elgato-stream-deck-mk2",

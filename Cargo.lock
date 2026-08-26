@@ -87,6 +87,7 @@ version = "0.0.1"
 dependencies = [
  "openrustygb-domain",
  "openrustygb-driver-aoc-amm700-mousemat",
+ "openrustygb-driver-aoc-gm500-mouse",
  "openrustygb-driver-api",
  "openrustygb-driver-areson-mice",
  "openrustygb-driver-asus-monitor",
@@ -126,6 +127,14 @@ version = "0.0.1"
 
 [[package]]
 name = "openrustygb-driver-aoc-amm700-mousemat"
+version = "0.0.1"
+dependencies = [
+ "openrustygb-domain",
+ "openrustygb-driver-api",
+]
+
+[[package]]
+name = "openrustygb-driver-aoc-gm500-mouse"
 version = "0.0.1"
 dependencies = [
  "openrustygb-domain",

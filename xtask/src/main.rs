@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 const PINNED_CONTROLLER_FAMILIES: usize = 197;
 const PINNED_DETECTOR_SOURCES: usize = 224;
 const PORTED_FAMILIES: &[(&str, &str)] = &[
+    ("AOCMouseController", "aoc-gm500-mouse"),
     ("AOCMousematController", "aoc-amm700-mousemat"),
     ("AresonController", "areson-mice"),
     ("AsusMonitorController", "asus-monitor"),
@@ -41,6 +42,7 @@ const PORTED_FAMILIES: &[(&str, &str)] = &[
     ("WushiController", "wushi-l50"),
 ];
 const PORTED_DETECTOR_SOURCES: &[&str] = &[
+    "Controllers/AOCMouseController/AOCMouseControllerDetect.cpp",
     "Controllers/AOCMousematController/AOCMousematControllerDetect.cpp",
     "Controllers/AresonController/AresonControllerDetect.cpp",
     "Controllers/AsusMonitorController/AsusMonitorControllerDetect.cpp",
