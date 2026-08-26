@@ -5,6 +5,15 @@ upstream commit `8121ee29f46d58f90a56348eb5bf7a64f52f923b`. The repository curre
 contains the verified Rust foundation and its initial hardware slices.
 It is not yet a feature-parity replacement.
 
+## Experimental status
+
+OpenRustyGB is under active development and may still contain serious bugs.
+Automated CI, protocol fixtures, and packet-level tests do not replace testing
+on physical hardware. Unless a device has recorded live-hardware evidence, its
+Rust driver should be treated as unverified: it may behave incorrectly, fail to
+work, or carry the usual risks of reverse-engineered hardware control. Do not
+rely on this development build for production use.
+
 The original C++/Qt source remains in the tree as a migration reference while
 the checked port inventory is completed. It is not linked into the Rust
 binary. There are no supported installers or parity release yet. Run
