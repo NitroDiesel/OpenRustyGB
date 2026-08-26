@@ -488,3 +488,19 @@ a matching device completes its live test.
 Physical Glorious Model I hardware was not present for this contraction. The
 family remains release-blocked by the global hardware-evidence policy until a
 matching device completes its live test.
+
+## HYTEKeyboardController
+
+- Rust package: `openrustygb-driver-hyte-keeb-tkl`
+- Device: HYTE Keeb TKL keyboard
+- Match: VID `3402`, PID `0300`, usage `FF11:00F0`; the native detector does not constrain the interface
+- Preserved model: one 98-key matrix zone and one linear 63-LED Underglow zone with Direct per-LED color
+- Preserved layout: the original TKL key values, five media keys, five independently addressable space-bar positions, and seven-row matrix map
+- Preserved output: keyboard feature selector `00 04 F0` followed by six 65-byte output pages, then underglow selector `00 04 F1` followed by three 65-byte output pages; RGB bytes remain continuous across page boundaries
+- Safety correction: unused protocol positions and packet tails are deterministically black, replacing native reads from uninitialized and one-past-the-end keyboard color storage; every 65-byte output must be accepted in full
+- Verification: exact usage matcher tests, key-value mapping and page-boundary packet goldens, zone order and report-count tests, color-count and model-shape tests, executable read-only probe and guarded 161-color command, workspace Clippy and tests
+- Deleted native files: `HYTEKeyboardController.cpp`, `HYTEKeyboardController.h`, `HYTEKeyboardControllerDetect.cpp`, `RGBController_HYTEKeyboard.cpp`, `RGBController_HYTEKeyboard.h`
+
+Physical HYTE Keeb TKL hardware was not present for this contraction. The
+family remains release-blocked by the global hardware-evidence policy until a
+matching device completes its live test.

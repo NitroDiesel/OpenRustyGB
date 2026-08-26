@@ -37,6 +37,7 @@ members = [
     "crates/drivers/luxafor-flag",
     "crates/drivers/instant-mice",
     "crates/drivers/glorious-model-i",
+    "crates/drivers/hyte-keeb-tkl",
     "crates/openrustygb-app",
     "xtask",
 ]

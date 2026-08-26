@@ -103,6 +103,7 @@ dependencies = [
  "openrustygb-driver-glorious-model-i",
  "openrustygb-driver-hyperx-mousemat",
  "openrustygb-driver-hyperx-pulsefire-haste2",
+ "openrustygb-driver-hyte-keeb-tkl",
  "openrustygb-driver-instant-mice",
  "openrustygb-driver-lego-dimensions-toypad",
  "openrustygb-driver-lexip-np93-alpha",
@@ -253,6 +254,14 @@ dependencies = [
 
 [[package]]
 name = "openrustygb-driver-hyperx-pulsefire-haste2"
+version = "0.0.1"
+dependencies = [
+ "openrustygb-domain",
+ "openrustygb-driver-api",
+]
+
+[[package]]
+name = "openrustygb-driver-hyte-keeb-tkl"
 version = "0.0.1"
 dependencies = [
  "openrustygb-domain",

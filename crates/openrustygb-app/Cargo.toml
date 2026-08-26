@@ -25,6 +25,7 @@ openrustygb-driver-gigabyte-aorus-m2 = { path = "../drivers/gigabyte-aorus-m2" }
 openrustygb-driver-gigabyte-aorus-c300-glass = { path = "../drivers/gigabyte-aorus-c300-glass" }
 openrustygb-driver-hyperx-pulsefire-haste2 = { path = "../drivers/hyperx-pulsefire-haste2" }
 openrustygb-driver-hyperx-mousemat = { path = "../drivers/hyperx-mousemat" }
+openrustygb-driver-hyte-keeb-tkl = { path = "../drivers/hyte-keeb-tkl" }
 openrustygb-driver-instant-mice = { path = "../drivers/instant-mice" }
 openrustygb-driver-lexip-np93-alpha = { path = "../drivers/lexip-np93-alpha" }
 openrustygb-driver-lego-dimensions-toypad = { path = "../drivers/lego-dimensions-toypad" }

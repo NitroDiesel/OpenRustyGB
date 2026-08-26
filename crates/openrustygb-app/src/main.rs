@@ -83,6 +83,12 @@ use openrustygb_driver_hyperx_mousemat::{
 use openrustygb_driver_hyperx_pulsefire_haste2::{
     MATCH, OUTPUT_REPORT_LEN, WheelColorTransaction, matches,
 };
+use openrustygb_driver_hyte_keeb_tkl::{
+    ApplyError as HyteApplyError, DirectColorTransaction as HyteColorTransaction,
+    InvalidColorCounts as HyteInvalidColorCounts, KEY_LED_COUNT as HYTE_KEY_LED_COUNT,
+    MATCH as HYTE_MATCH, OUTPUT_REPORT_LEN as HYTE_REPORT_LEN,
+    UNDERGLOW_LED_COUNT as HYTE_UNDERGLOW_LED_COUNT, matches as matches_hyte,
+};
 use openrustygb_driver_instant_mice::{
     Direction as InstantDirection, FEATURE_REPORT_LEN as INSTANT_REPORT_LEN, InstantMode,
     InstantMouseModel, InvalidSettings as InstantInvalidSettings,
@@ -193,6 +199,7 @@ fn dispatch_probe(args: &[String]) -> Option<Result<(), Box<dyn Error>>> {
         [command] if command == "probe-wushi" => Some(probe_wushi()),
         [command] if command == "probe-gamesir" => Some(probe_gamesir()),
         [command] if command == "probe-glorious-model-i" => Some(probe_glorious()),
+        [command] if command == "probe-hyte-keeb-tkl" => Some(probe_hyte()),
         [command] if command == "probe-aorus-m2" => Some(probe_aorus()),
         [command] if command == "probe-aorus-case" => Some(probe_aorus_case()),
         [command] if command == "probe-hyperx-mousemat" => Some(probe_hyperx_mousemat()),
@@ -703,6 +710,30 @@ fn probe_glorious() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+fn probe_hyte() -> Result<(), Box<dyn Error>> {
+    let endpoints = HidInventory::enumerate()?;
+    let exact: Vec<_> = endpoints
+        .iter()
+        .filter(|endpoint| matches_hyte(endpoint))
+        .collect();
+    if exact.is_empty() {
+        println!("No exact HYTE Keeb TKL lighting endpoint found.");
+    } else {
+        for endpoint in exact {
+            println!(
+                "Found HYTE Keeb TKL endpoint: {:04X}:{:04X}, interface {}, usage {:04X}:{:04X}",
+                endpoint.vendor_id,
+                endpoint.product_id,
+                endpoint.interface_number,
+                endpoint.usage_page,
+                endpoint.usage
+            );
+        }
+    }
+    println!("Probe completed without opening a device or writing a report.");
+    Ok(())
+}
+
 fn probe_lego() -> Result<(), Box<dyn Error>> {
     let endpoints = HidInventory::enumerate()?;
     let exact: Vec<_> = endpoints
@@ -1181,6 +1212,7 @@ fn dispatch_per_led_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
             | "set-dark-project"
             | "set-stream-deck"
             | "set-skydimo"
+            | "set-hyte-keeb-tkl"
     ) {
         return Ok(false);
     }
@@ -1191,6 +1223,7 @@ fn dispatch_per_led_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
         "set-dark-project" => set_dark_project_colors(colors)?,
         "set-stream-deck" => set_stream_deck_colors(colors)?,
         "set-skydimo" => set_skydimo_colors(colors)?,
+        "set-hyte-keeb-tkl" => set_hyte_colors(&colors)?,
         _ => unreachable!("command was checked above"),
     }
     Ok(true)
@@ -1212,6 +1245,7 @@ fn print_usage() {
          openrustygb probe-wushi\n  \
          openrustygb probe-gamesir\n  \
          openrustygb probe-glorious-model-i\n  \
+         openrustygb probe-hyte-keeb-tkl\n  \
          openrustygb probe-hyperx-mousemat\n  \
          openrustygb probe-instant-mouse\n  \
          openrustygb probe-lego-toypad\n  \
@@ -1249,6 +1283,7 @@ fn print_usage() {
          <static|wave|breathing|breathing-random|rainbow|flashing> RRGGBB\n  \
          openrustygb set-haste2-color --confirm-reversible-write RRGGBB\n  \
          openrustygb set-hyperx-mousemat --confirm-reversible-write <RRGGBB...>\n  \
+         openrustygb set-hyte-keeb-tkl --confirm-reversible-write <98-key-RRGGBB-colors> <63-underglow-RRGGBB-colors>\n  \
          openrustygb set-instant-mouse --confirm-reversible-write \
          <direct|rainbow-wave|spectrum|breathing|fill|loop|enraptured|flicker|ripple|star-treck|off> \
          RRGGBB <brightness> <speed> <left|right>\n  \
@@ -2193,6 +2228,47 @@ fn set_glorious_mode(command: GloriousCommand) -> Result<(), Box<dyn Error>> {
         }
     }
     println!("Applied one reversible Glorious Model I mode transaction.");
+    Ok(())
+}
+
+fn set_hyte_colors(colors: &[Rgb8]) -> Result<(), Box<dyn Error>> {
+    let expected = HYTE_KEY_LED_COUNT + HYTE_UNDERGLOW_LED_COUNT;
+    if colors.len() != expected {
+        return Err(format!(
+            "HYTE Keeb TKL requires {expected} colors: {HYTE_KEY_LED_COUNT} keyboard colors followed by {HYTE_UNDERGLOW_LED_COUNT} underglow colors; got {}",
+            colors.len()
+        )
+        .into());
+    }
+    let endpoints = HidInventory::enumerate()?;
+    let mut exact = endpoints.into_iter().filter(matches_hyte);
+    let endpoint = exact
+        .next()
+        .ok_or("exact HYTE Keeb TKL lighting endpoint not found")?;
+    if exact.next().is_some() {
+        return Err("more than one HYTE Keeb TKL endpoint found; refusing to choose".into());
+    }
+    let output = HidOutput::<HYTE_REPORT_LEN>::open_matching(&endpoint, HYTE_MATCH)?;
+    let (keyboard, underglow) = colors.split_at(HYTE_KEY_LED_COUNT);
+    let command = HyteCommand {
+        keyboard: keyboard.to_vec(),
+        underglow: underglow.to_vec(),
+    };
+    let target = ControllerRef {
+        id: ControllerId::new(NonZeroU64::new(32).expect("thirty-two is non-zero")),
+        incarnation: Incarnation::new(NonZeroU32::new(1).expect("one is non-zero")),
+    };
+    let actor = ControllerActor::start(target, HyteBackend { output }, 4)?;
+    let outcome = actor.submit_barrier(target, command)?.wait()?;
+    actor.shutdown()?;
+    match outcome {
+        CommandOutcome::Applied { .. } => {}
+        CommandOutcome::Failed { error, .. } => return Err(error.into()),
+        CommandOutcome::Superseded { .. } => {
+            return Err("HYTE Keeb TKL color command was unexpectedly superseded".into());
+        }
+    }
+    println!("Applied one reversible HYTE Keeb TKL per-LED transaction.");
     Ok(())
 }
 
@@ -3634,6 +3710,60 @@ impl ControllerBackend for GloriousBackend {
         .map_err(GloriousBackendError::Settings)?
         .apply(&mut self.output)
         .map_err(GloriousBackendError::Output)
+    }
+
+    fn shutdown(&mut self) -> Result<(), Self::Error> {
+        Ok(())
+    }
+}
+
+#[derive(Clone, Debug)]
+struct HyteCommand {
+    keyboard: Vec<Rgb8>,
+    underglow: Vec<Rgb8>,
+}
+
+#[derive(Debug)]
+struct HyteBackend {
+    output: HidOutput<HYTE_REPORT_LEN>,
+}
+
+#[derive(Debug)]
+enum HyteBackendError {
+    Settings(HyteInvalidColorCounts),
+    Output(HyteApplyError<HidTransportError>),
+}
+
+impl fmt::Display for HyteBackendError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Settings(error) => write!(f, "invalid HYTE Keeb TKL colors: {error}"),
+            Self::Output(error) => write!(f, "could not apply HYTE Keeb TKL colors: {error}"),
+        }
+    }
+}
+
+impl Error for HyteBackendError {}
+
+impl ControllerBackend for HyteBackend {
+    type Barrier = HyteCommand;
+    type Error = HyteBackendError;
+
+    fn apply_whole_color(&mut self, color: Rgb8) -> Result<(), Self::Error> {
+        HyteColorTransaction::new(
+            &[color; HYTE_KEY_LED_COUNT],
+            &[color; HYTE_UNDERGLOW_LED_COUNT],
+        )
+        .map_err(HyteBackendError::Settings)?
+        .apply(&mut self.output)
+        .map_err(HyteBackendError::Output)
+    }
+
+    fn apply_barrier(&mut self, command: Self::Barrier) -> Result<(), Self::Error> {
+        HyteColorTransaction::new(&command.keyboard, &command.underglow)
+            .map_err(HyteBackendError::Settings)?
+            .apply(&mut self.output)
+            .map_err(HyteBackendError::Output)
     }
 
     fn shutdown(&mut self) -> Result<(), Self::Error> {
