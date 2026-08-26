@@ -77,6 +77,11 @@ use openrustygb_driver_hyperx_mousemat::{
 use openrustygb_driver_hyperx_pulsefire_haste2::{
     MATCH, OUTPUT_REPORT_LEN, WheelColorTransaction, matches,
 };
+use openrustygb_driver_instant_mice::{
+    Direction as InstantDirection, FEATURE_REPORT_LEN as INSTANT_REPORT_LEN, InstantMode,
+    InstantMouseModel, InvalidSettings as InstantInvalidSettings,
+    ModeTransaction as InstantModeTransaction, match_model as match_instant_mouse,
+};
 use openrustygb_driver_lego_dimensions_toypad::{
     Activation as LegoActivation, DirectColorTransaction as LegoDirectColorTransaction,
     MATCH as LEGO_MATCH, ModeTransaction as LegoModeTransaction,
@@ -184,6 +189,7 @@ fn dispatch_probe(args: &[String]) -> Option<Result<(), Box<dyn Error>>> {
         [command] if command == "probe-aorus-m2" => Some(probe_aorus()),
         [command] if command == "probe-aorus-case" => Some(probe_aorus_case()),
         [command] if command == "probe-hyperx-mousemat" => Some(probe_hyperx_mousemat()),
+        [command] if command == "probe-instant-mouse" => Some(probe_instant_mouse()),
         [command] if command == "probe-lego-toypad" => Some(probe_lego()),
         [command] if command == "probe-luxafor" => Some(probe_luxafor()),
         [command] if command == "probe-lexip" => Some(probe_lexip()),
@@ -640,6 +646,31 @@ fn probe_hyperx_mousemat() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+fn probe_instant_mouse() -> Result<(), Box<dyn Error>> {
+    let endpoints = HidInventory::enumerate()?;
+    let exact: Vec<_> = endpoints
+        .iter()
+        .filter_map(|endpoint| match_instant_mouse(endpoint).map(|model| (endpoint, model)))
+        .collect();
+    if exact.is_empty() {
+        println!("No exact supported Instant mouse lighting endpoint found.");
+    } else {
+        for (endpoint, model) in exact {
+            println!(
+                "Found {} endpoint: {:04X}:{:04X}, interface {}, usage {:04X}:{:04X}",
+                model.name,
+                endpoint.vendor_id,
+                endpoint.product_id,
+                endpoint.interface_number,
+                endpoint.usage_page,
+                endpoint.usage
+            );
+        }
+    }
+    println!("Probe completed without opening a device or writing a report.");
+    Ok(())
+}
+
 fn probe_lego() -> Result<(), Box<dyn Error>> {
     let endpoints = HidInventory::enumerate()?;
     let exact: Vec<_> = endpoints
@@ -750,6 +781,9 @@ fn dispatch_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
 }
 
 fn dispatch_structured_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
+    if dispatch_instant_mouse_write(args)? {
+        return Ok(true);
+    }
     if dispatch_aoc_mouse_write(args)? {
         return Ok(true);
     }
@@ -781,6 +815,32 @@ fn dispatch_structured_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
         return Ok(true);
     }
     Ok(false)
+}
+
+fn dispatch_instant_mouse_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
+    let [
+        command,
+        confirmation,
+        mode,
+        color,
+        brightness,
+        speed,
+        direction,
+    ] = args
+    else {
+        return Ok(false);
+    };
+    if command != "set-instant-mouse" || confirmation != "--confirm-reversible-write" {
+        return Ok(false);
+    }
+    set_instant_mouse_mode(InstantCommand {
+        mode: parse_instant_mode(mode)?,
+        color: parse_rgb(color)?,
+        brightness: parse_u8_decimal(brightness, "brightness")?,
+        speed: parse_u8_decimal(speed, "speed")?,
+        direction: parse_instant_direction(direction)?,
+    })?;
+    Ok(true)
 }
 
 fn dispatch_aoc_mouse_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
@@ -1101,6 +1161,7 @@ fn print_usage() {
          openrustygb probe-wushi\n  \
          openrustygb probe-gamesir\n  \
          openrustygb probe-hyperx-mousemat\n  \
+         openrustygb probe-instant-mouse\n  \
          openrustygb probe-lego-toypad\n  \
          openrustygb probe-luxafor\n  \
          openrustygb probe-lexip\n  \
@@ -1136,6 +1197,9 @@ fn print_usage() {
          <static|wave|breathing|breathing-random|rainbow|flashing> RRGGBB\n  \
          openrustygb set-haste2-color --confirm-reversible-write RRGGBB\n  \
          openrustygb set-hyperx-mousemat --confirm-reversible-write <RRGGBB...>\n  \
+         openrustygb set-instant-mouse --confirm-reversible-write \
+         <direct|rainbow-wave|spectrum|breathing|fill|loop|enraptured|flicker|ripple|star-treck|off> \
+         RRGGBB <brightness> <speed> <left|right>\n  \
          openrustygb set-lego-toypad --confirm-reversible-write direct \
          <CENTER> <LEFT> <RIGHT>\n  \
          openrustygb set-lego-toypad --confirm-reversible-write \
@@ -2015,6 +2079,37 @@ fn set_aoc_mouse_mode(command: AocMouseCommand) -> Result<(), Box<dyn Error>> {
         }
     }
     println!("Applied one reversible AOC GM500 mode transaction.");
+    Ok(())
+}
+
+fn set_instant_mouse_mode(command: InstantCommand) -> Result<(), Box<dyn Error>> {
+    let endpoints = HidInventory::enumerate()?;
+    let mut exact = endpoints.into_iter().filter_map(|endpoint| {
+        let model = match_instant_mouse(&endpoint)?;
+        Some((endpoint, model))
+    });
+    let (endpoint, model) = exact
+        .next()
+        .ok_or("exact supported Instant mouse lighting endpoint not found")?;
+    if exact.next().is_some() {
+        return Err("more than one Instant mouse endpoint found; refusing to choose".into());
+    }
+    let output = HidOutput::<INSTANT_REPORT_LEN>::open_matching(&endpoint, model.matcher)?;
+    let target = ControllerRef {
+        id: ControllerId::new(NonZeroU64::new(30).expect("thirty is non-zero")),
+        incarnation: Incarnation::new(NonZeroU32::new(1).expect("one is non-zero")),
+    };
+    let actor = ControllerActor::start(target, InstantBackend { model, output }, 4)?;
+    let outcome = actor.submit_barrier(target, command)?.wait()?;
+    actor.shutdown()?;
+    match outcome {
+        CommandOutcome::Applied { .. } => {}
+        CommandOutcome::Failed { error, .. } => return Err(error.into()),
+        CommandOutcome::Superseded { .. } => {
+            return Err("Instant mouse mode command was unexpectedly superseded".into());
+        }
+    }
+    println!("Applied one reversible Instant mouse lighting transaction.");
     Ok(())
 }
 
@@ -3396,6 +3491,80 @@ struct AocMouseCommand {
     direction: AocMouseDirection,
 }
 
+#[derive(Clone, Copy, Debug)]
+struct InstantCommand {
+    mode: InstantMode,
+    color: Rgb8,
+    brightness: u8,
+    speed: u8,
+    direction: InstantDirection,
+}
+
+#[derive(Debug)]
+struct InstantBackend {
+    model: InstantMouseModel,
+    output: HidOutput<INSTANT_REPORT_LEN>,
+}
+
+#[derive(Debug)]
+enum InstantBackendError {
+    Settings(InstantInvalidSettings),
+    Output(HidTransportError),
+}
+
+impl fmt::Display for InstantBackendError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Settings(error) => write!(f, "invalid Instant mouse mode: {error}"),
+            Self::Output(error) => write!(f, "could not apply Instant mouse mode: {error}"),
+        }
+    }
+}
+
+impl Error for InstantBackendError {}
+
+impl ControllerBackend for InstantBackend {
+    type Barrier = InstantCommand;
+    type Error = InstantBackendError;
+
+    fn apply_whole_color(&mut self, color: Rgb8) -> Result<(), Self::Error> {
+        InstantModeTransaction::new(
+            self.model,
+            InstantMode::Direct,
+            color,
+            0,
+            7,
+            InstantDirection::Right,
+        )
+        .map_err(InstantBackendError::Settings)?
+        .apply(&mut self.output)
+        .map_err(InstantBackendError::Output)
+    }
+
+    fn apply_barrier(&mut self, command: Self::Barrier) -> Result<(), Self::Error> {
+        let mode = if self.model.ant_effects && command.mode == InstantMode::Breathing {
+            InstantMode::AntBreathing
+        } else {
+            command.mode
+        };
+        InstantModeTransaction::new(
+            self.model,
+            mode,
+            command.color,
+            command.speed,
+            command.brightness,
+            command.direction,
+        )
+        .map_err(InstantBackendError::Settings)?
+        .apply(&mut self.output)
+        .map_err(InstantBackendError::Output)
+    }
+
+    fn shutdown(&mut self) -> Result<(), Self::Error> {
+        Ok(())
+    }
+}
+
 #[derive(Debug)]
 struct AocMouseBackend {
     output: HidOutput<AOC_MOUSE_REPORT_LEN>,
@@ -3810,6 +3979,31 @@ fn parse_aoc_mouse_direction(input: &str) -> Result<AocMouseDirection, Box<dyn E
         "cw" => Ok(AocMouseDirection::Clockwise),
         "ccw" => Ok(AocMouseDirection::CounterClockwise),
         _ => Err("AOC GM500 direction must be cw or ccw".into()),
+    }
+}
+
+fn parse_instant_mode(input: &str) -> Result<InstantMode, Box<dyn Error>> {
+    match input {
+        "direct" => Ok(InstantMode::Direct),
+        "rainbow-wave" => Ok(InstantMode::RainbowWave),
+        "spectrum" => Ok(InstantMode::SpectrumCycle),
+        "breathing" => Ok(InstantMode::Breathing),
+        "fill" => Ok(InstantMode::Fill),
+        "loop" => Ok(InstantMode::Loop),
+        "enraptured" => Ok(InstantMode::Enraptured),
+        "flicker" => Ok(InstantMode::Flicker),
+        "ripple" => Ok(InstantMode::Ripple),
+        "star-treck" => Ok(InstantMode::StarTreck),
+        "off" => Ok(InstantMode::Off),
+        _ => Err("unknown Instant mouse mode".into()),
+    }
+}
+
+fn parse_instant_direction(input: &str) -> Result<InstantDirection, Box<dyn Error>> {
+    match input {
+        "right" => Ok(InstantDirection::Right),
+        "left" => Ok(InstantDirection::Left),
+        _ => Err("Instant mouse direction must be left or right".into()),
     }
 }
 

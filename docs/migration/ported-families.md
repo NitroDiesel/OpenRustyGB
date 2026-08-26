@@ -454,3 +454,20 @@ device completes its live test.
 Physical AOC GM500 hardware was not present for this contraction. The family
 remains release-blocked by the global hardware-evidence policy until a matching
 device completes its live test.
+
+## InstantMouseController
+
+- Rust package: `openrustygb-driver-instant-mice`
+- Devices: Advanced GTA 250, Anko KM43243952, Anko KM43277483, and AntEsports GM600 USB gaming mice
+- Match: VID `30FA`; PIDs `1030`, `1440`, `1540`, and `1040`; interface `1`; usage `FF01:0001`
+- Preserved model: one Mouse LED; Direct, Rainbow wave, Spectrum cycle, Breathing, Fill, Loop, and Off on all models; Enrpatured, Flicker, Ripple, and Star treck on the AntEsports GM600
+- Preserved model quirk: the AntEsports GM600 uses breathing ID `09`; the other models use `08`
+- Preserved output: exact 8-byte mode feature report plus six color feature reports for DPI slots `0,2,4,6,8,10`; 8-bit RGB is quantized and inverted into the native 4-bit channel encoding
+- Preserved Off behavior: first select Direct mode with zero brightness, then send the native encoded black color to all six slots
+- Safety correction: unsupported Ant-only modes and settings outside speed `0..5` or brightness `0..7` are rejected; inputs for fields not exposed by a mode are normalized to the upstream defaults
+- Verification: all four endpoint matchers, color quantization and DPI-slot packet goldens, Direct/Breathing/Off sequence goldens, Ant mode isolation and model-shape tests, executable read-only probe and guarded mode command, workspace Clippy and tests
+- Deleted native files: `InstantMouseController.cpp`, `InstantMouseController.h`, `InstantMouseControllerDetect.cpp`, `InstantMouseDevices.h`, `RGBController_InstantMouse.cpp`, `RGBController_InstantMouse.h`
+
+Physical supported Instant mouse hardware was not present for this contraction.
+The family remains release-blocked by the global hardware-evidence policy until
+a matching device completes its live test.

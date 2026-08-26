@@ -102,6 +102,7 @@ dependencies = [
  "openrustygb-driver-gigabyte-aorus-m2",
  "openrustygb-driver-hyperx-mousemat",
  "openrustygb-driver-hyperx-pulsefire-haste2",
+ "openrustygb-driver-instant-mice",
  "openrustygb-driver-lego-dimensions-toypad",
  "openrustygb-driver-lexip-np93-alpha",
  "openrustygb-driver-luxafor-flag",
@@ -243,6 +244,14 @@ dependencies = [
 
 [[package]]
 name = "openrustygb-driver-hyperx-pulsefire-haste2"
+version = "0.0.1"
+dependencies = [
+ "openrustygb-domain",
+ "openrustygb-driver-api",
+]
+
+[[package]]
+name = "openrustygb-driver-instant-mice"
 version = "0.0.1"
 dependencies = [
  "openrustygb-domain",

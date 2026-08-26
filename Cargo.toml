@@ -35,6 +35,7 @@ members = [
     "crates/drivers/skydimo-sk0902",
     "crates/drivers/ek-loop-connect",
     "crates/drivers/luxafor-flag",
+    "crates/drivers/instant-mice",
     "crates/openrustygb-app",
     "xtask",
 ]
