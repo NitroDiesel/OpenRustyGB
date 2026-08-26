@@ -36,6 +36,7 @@ members = [
     "crates/drivers/ek-loop-connect",
     "crates/drivers/luxafor-flag",
     "crates/drivers/instant-mice",
+    "crates/drivers/glorious-model-i",
     "crates/openrustygb-app",
     "xtask",
 ]

@@ -23,6 +23,7 @@ const PORTED_FAMILIES: &[(&str, &str)] = &[
     ("FaustusController", "faustus-keyboard"),
     ("HyperXMousematController", "hyperx-mousemat"),
     ("InstantMouseController", "instant-mice"),
+    ("LaviewTechnologyController", "glorious-model-i"),
     ("LexipMouseController", "lexip-np93-alpha"),
     (
         "LegoDimensionsToypadBaseController",
@@ -57,6 +58,7 @@ const PORTED_DETECTOR_SOURCES: &[&str] = &[
     "Controllers/GigabyteAorusPCCaseController/GigabyteAorusPCCaseControllerDetect.cpp",
     "Controllers/HyperXMousematController/HyperXMousematControllerDetect.cpp",
     "Controllers/InstantMouseController/InstantMouseControllerDetect.cpp",
+    "Controllers/LaviewTechnologyController/LaviewTechnologyDetector.cpp",
     "Controllers/LexipMouseController/LexipMouseControllerDetect.cpp",
     "Controllers/LegoDimensionsToypadBaseController/LegoDimensionsToypadBaseControllerDetect.cpp",
     "Controllers/LuxaforController/LuxaforControllerDetect.cpp",

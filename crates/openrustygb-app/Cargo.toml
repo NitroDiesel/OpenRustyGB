@@ -20,6 +20,7 @@ openrustygb-driver-elgato-stream-deck-mk2 = { path = "../drivers/elgato-stream-d
 openrustygb-driver-ek-loop-connect = { path = "../drivers/ek-loop-connect" }
 openrustygb-driver-faustus-keyboard = { path = "../drivers/faustus-keyboard" }
 openrustygb-driver-gamesir-nova-lite-2 = { path = "../drivers/gamesir-nova-lite-2" }
+openrustygb-driver-glorious-model-i = { path = "../drivers/glorious-model-i" }
 openrustygb-driver-gigabyte-aorus-m2 = { path = "../drivers/gigabyte-aorus-m2" }
 openrustygb-driver-gigabyte-aorus-c300-glass = { path = "../drivers/gigabyte-aorus-c300-glass" }
 openrustygb-driver-hyperx-pulsefire-haste2 = { path = "../drivers/hyperx-pulsefire-haste2" }

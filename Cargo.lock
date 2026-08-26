@@ -100,6 +100,7 @@ dependencies = [
  "openrustygb-driver-gamesir-nova-lite-2",
  "openrustygb-driver-gigabyte-aorus-c300-glass",
  "openrustygb-driver-gigabyte-aorus-m2",
+ "openrustygb-driver-glorious-model-i",
  "openrustygb-driver-hyperx-mousemat",
  "openrustygb-driver-hyperx-pulsefire-haste2",
  "openrustygb-driver-instant-mice",
@@ -228,6 +229,14 @@ dependencies = [
 
 [[package]]
 name = "openrustygb-driver-gigabyte-aorus-m2"
+version = "0.0.1"
+dependencies = [
+ "openrustygb-domain",
+ "openrustygb-driver-api",
+]
+
+[[package]]
+name = "openrustygb-driver-glorious-model-i"
 version = "0.0.1"
 dependencies = [
  "openrustygb-domain",

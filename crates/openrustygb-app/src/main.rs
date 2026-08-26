@@ -69,6 +69,12 @@ use openrustygb_driver_gigabyte_aorus_m2::{
     FEATURE_REPORT_LEN as AORUS_REPORT_LEN, InvalidSettings as AorusInvalidSettings,
     MATCH as AORUS_MATCH, ModeTransaction as AorusModeTransaction, matches as matches_aorus,
 };
+use openrustygb_driver_glorious_model_i::{
+    FEATURE_REPORT_LEN as GLORIOUS_REPORT_LEN, GloriousMode,
+    InvalidSettings as GloriousInvalidSettings, MATCH as GLORIOUS_MATCH,
+    ModeTransaction as GloriousModeTransaction, firmware_version as glorious_firmware_version,
+    matches as matches_glorious,
+};
 use openrustygb_driver_hyperx_mousemat::{
     DirectColorTransaction as HyperXMousematColorTransaction,
     FEATURE_REPORT_LEN as HYPERX_MOUSEMAT_REPORT_LEN, HyperXMousematModel,
@@ -186,6 +192,7 @@ fn dispatch_probe(args: &[String]) -> Option<Result<(), Box<dyn Error>>> {
         [command] if command == "probe-skydimo" => Some(probe_skydimo()),
         [command] if command == "probe-wushi" => Some(probe_wushi()),
         [command] if command == "probe-gamesir" => Some(probe_gamesir()),
+        [command] if command == "probe-glorious-model-i" => Some(probe_glorious()),
         [command] if command == "probe-aorus-m2" => Some(probe_aorus()),
         [command] if command == "probe-aorus-case" => Some(probe_aorus_case()),
         [command] if command == "probe-hyperx-mousemat" => Some(probe_hyperx_mousemat()),
@@ -671,6 +678,31 @@ fn probe_instant_mouse() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+fn probe_glorious() -> Result<(), Box<dyn Error>> {
+    let endpoints = HidInventory::enumerate()?;
+    let exact: Vec<_> = endpoints
+        .iter()
+        .filter(|endpoint| matches_glorious(endpoint))
+        .collect();
+    if exact.is_empty() {
+        println!("No exact Glorious Model I lighting endpoint found.");
+    } else {
+        for endpoint in exact {
+            println!(
+                "Found Glorious Model I endpoint: {:04X}:{:04X}, interface {}, usage {:04X}:{:04X}, firmware {}",
+                endpoint.vendor_id,
+                endpoint.product_id,
+                endpoint.interface_number,
+                endpoint.usage_page,
+                endpoint.usage,
+                glorious_firmware_version(endpoint.release_number)
+            );
+        }
+    }
+    println!("Probe completed without opening a device or writing a report.");
+    Ok(())
+}
+
 fn probe_lego() -> Result<(), Box<dyn Error>> {
     let endpoints = HidInventory::enumerate()?;
     let exact: Vec<_> = endpoints
@@ -781,6 +813,9 @@ fn dispatch_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
 }
 
 fn dispatch_structured_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
+    if dispatch_glorious_write(args)? {
+        return Ok(true);
+    }
     if dispatch_instant_mouse_write(args)? {
         return Ok(true);
     }
@@ -815,6 +850,22 @@ fn dispatch_structured_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
         return Ok(true);
     }
     Ok(false)
+}
+
+fn dispatch_glorious_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
+    let [command, confirmation, mode, color, brightness, speed] = args else {
+        return Ok(false);
+    };
+    if command != "set-glorious-model-i" || confirmation != "--confirm-reversible-write" {
+        return Ok(false);
+    }
+    set_glorious_mode(GloriousCommand {
+        mode: parse_glorious_mode(mode)?,
+        color: parse_rgb(color)?,
+        brightness: parse_u8_decimal(brightness, "brightness")?,
+        speed: parse_u8_decimal(speed, "speed")?,
+    })?;
+    Ok(true)
 }
 
 fn dispatch_instant_mouse_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
@@ -1160,6 +1211,7 @@ fn print_usage() {
          openrustygb probe-skydimo\n  \
          openrustygb probe-wushi\n  \
          openrustygb probe-gamesir\n  \
+         openrustygb probe-glorious-model-i\n  \
          openrustygb probe-hyperx-mousemat\n  \
          openrustygb probe-instant-mouse\n  \
          openrustygb probe-lego-toypad\n  \
@@ -1221,6 +1273,9 @@ fn print_usage() {
          <direct|breathing|rainbow-wave|spectrum|race|stacking> \
          <ZONE1> <ZONE2> <ZONE3> <ZONE4> <brightness> <speed> <left|right>\n  \
          openrustygb set-gamesir-color --confirm-reversible-write RRGGBB\n  \
+         openrustygb set-glorious-model-i --confirm-reversible-write \
+         <custom|flashing|chase|wave|spectrum|breathing|spectrum-breathing|rainbow-wave|off> \
+         RRGGBB <brightness> <speed>\n  \
          openrustygb set-lexip-color --confirm-reversible-write RRGGBB\n  \
          openrustygb set-madcatz-color --confirm-reversible-write RRGGBB <brightness>\n  \
          openrustygb set-msi-3-zone --confirm-reversible-write \
@@ -2110,6 +2165,34 @@ fn set_instant_mouse_mode(command: InstantCommand) -> Result<(), Box<dyn Error>>
         }
     }
     println!("Applied one reversible Instant mouse lighting transaction.");
+    Ok(())
+}
+
+fn set_glorious_mode(command: GloriousCommand) -> Result<(), Box<dyn Error>> {
+    let endpoints = HidInventory::enumerate()?;
+    let mut exact = endpoints.into_iter().filter(matches_glorious);
+    let endpoint = exact
+        .next()
+        .ok_or("exact Glorious Model I lighting endpoint not found")?;
+    if exact.next().is_some() {
+        return Err("more than one Glorious Model I endpoint found; refusing to choose".into());
+    }
+    let output = HidOutput::<GLORIOUS_REPORT_LEN>::open_matching(&endpoint, GLORIOUS_MATCH)?;
+    let target = ControllerRef {
+        id: ControllerId::new(NonZeroU64::new(31).expect("thirty-one is non-zero")),
+        incarnation: Incarnation::new(NonZeroU32::new(1).expect("one is non-zero")),
+    };
+    let actor = ControllerActor::start(target, GloriousBackend { output }, 4)?;
+    let outcome = actor.submit_barrier(target, command)?.wait()?;
+    actor.shutdown()?;
+    match outcome {
+        CommandOutcome::Applied { .. } => {}
+        CommandOutcome::Failed { error, .. } => return Err(error.into()),
+        CommandOutcome::Superseded { .. } => {
+            return Err("Glorious Model I mode command was unexpectedly superseded".into());
+        }
+    }
+    println!("Applied one reversible Glorious Model I mode transaction.");
     Ok(())
 }
 
@@ -3500,6 +3583,64 @@ struct InstantCommand {
     direction: InstantDirection,
 }
 
+#[derive(Clone, Copy, Debug)]
+struct GloriousCommand {
+    mode: GloriousMode,
+    color: Rgb8,
+    brightness: u8,
+    speed: u8,
+}
+
+#[derive(Debug)]
+struct GloriousBackend {
+    output: HidOutput<GLORIOUS_REPORT_LEN>,
+}
+
+#[derive(Debug)]
+enum GloriousBackendError {
+    Settings(GloriousInvalidSettings),
+    Output(HidTransportError),
+}
+
+impl fmt::Display for GloriousBackendError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Settings(error) => write!(f, "invalid Glorious Model I mode: {error}"),
+            Self::Output(error) => write!(f, "could not apply Glorious Model I mode: {error}"),
+        }
+    }
+}
+
+impl Error for GloriousBackendError {}
+
+impl ControllerBackend for GloriousBackend {
+    type Barrier = GloriousCommand;
+    type Error = GloriousBackendError;
+
+    fn apply_whole_color(&mut self, color: Rgb8) -> Result<(), Self::Error> {
+        GloriousModeTransaction::new(GloriousMode::Custom, color, 50, 0)
+            .map_err(GloriousBackendError::Settings)?
+            .apply(&mut self.output)
+            .map_err(GloriousBackendError::Output)
+    }
+
+    fn apply_barrier(&mut self, command: Self::Barrier) -> Result<(), Self::Error> {
+        GloriousModeTransaction::new(
+            command.mode,
+            command.color,
+            command.brightness,
+            command.speed,
+        )
+        .map_err(GloriousBackendError::Settings)?
+        .apply(&mut self.output)
+        .map_err(GloriousBackendError::Output)
+    }
+
+    fn shutdown(&mut self) -> Result<(), Self::Error> {
+        Ok(())
+    }
+}
+
 #[derive(Debug)]
 struct InstantBackend {
     model: InstantMouseModel,
@@ -4004,6 +4145,21 @@ fn parse_instant_direction(input: &str) -> Result<InstantDirection, Box<dyn Erro
         "right" => Ok(InstantDirection::Right),
         "left" => Ok(InstantDirection::Left),
         _ => Err("Instant mouse direction must be left or right".into()),
+    }
+}
+
+fn parse_glorious_mode(input: &str) -> Result<GloriousMode, Box<dyn Error>> {
+    match input {
+        "custom" => Ok(GloriousMode::Custom),
+        "flashing" => Ok(GloriousMode::Flashing),
+        "chase" => Ok(GloriousMode::Chase),
+        "wave" => Ok(GloriousMode::Wave),
+        "spectrum" => Ok(GloriousMode::SpectrumCycle),
+        "breathing" => Ok(GloriousMode::Breathing),
+        "spectrum-breathing" => Ok(GloriousMode::SpectrumBreathing),
+        "rainbow-wave" => Ok(GloriousMode::RainbowWave),
+        "off" => Ok(GloriousMode::Off),
+        _ => Err("unknown Glorious Model I mode".into()),
     }
 }
 

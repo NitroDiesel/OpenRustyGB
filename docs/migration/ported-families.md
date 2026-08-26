@@ -471,3 +471,20 @@ device completes its live test.
 Physical supported Instant mouse hardware was not present for this contraction.
 The family remains release-blocked by the global hardware-evidence policy until
 a matching device completes its live test.
+
+## LaviewTechnologyController
+
+- Rust package: `openrustygb-driver-glorious-model-i`
+- Device: wired Glorious Model I mouse
+- Match: VID `22D4`, PID `1503`, interface `1`, usage `FF01:0002`
+- Preserved model: one Mouse LED; Custom, Flashing, Chase, Wave, Spectrum Cycle, Breathing, Spectrum Breathing, Rainbow Wave, and Off modes
+- Preserved output: exact 64-byte `A1 0C` profile feature report; mode at byte `16`, brightness at `56`, speed at `58`, and the native 21-byte factory palette for hardware effects
+- Preserved color behavior: Custom and Breathing place the selected RGB value at bytes `17..19`; other modes retain the native palette needed for effects omitted by the official control application
+- Preserved metadata: HID manufacturer, serial number, and decimal USB release number remain the vendor, serial, and firmware surfaces
+- Safety correction: public brightness `0..100` and animated speed `1..100` are validated, then safely saturated at the protocol maximum `64`; this replaces the native reversed `std::clamp` arguments and their undefined precondition
+- Verification: exact endpoint matcher tests, Custom/Breathing color packet goldens, palette/effect packet golden, setting saturation and bounds tests, Off packet, firmware and model-shape tests, executable read-only probe and guarded mode command, workspace Clippy and tests
+- Deleted native files: `LaviewTechnologyDetector.cpp`, `LaviewTechnologyController.cpp`, `LaviewTechnologyController.h`, `RGBController_LaviewTechnology.cpp`, `RGBController_LaviewTechnology.h`
+
+Physical Glorious Model I hardware was not present for this contraction. The
+family remains release-blocked by the global hardware-evidence policy until a
+matching device completes its live test.
