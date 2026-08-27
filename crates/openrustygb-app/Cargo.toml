@@ -28,6 +28,7 @@ openrustygb-driver-hyperx-mousemat = { path = "../drivers/hyperx-mousemat" }
 openrustygb-driver-hyte-keeb-tkl = { path = "../drivers/hyte-keeb-tkl" }
 openrustygb-driver-instant-mice = { path = "../drivers/instant-mice" }
 openrustygb-driver-intel-arc-a770-le = { path = "../drivers/intel-arc-a770-le" }
+openrustygb-driver-skyloong-gk104-pro = { path = "../drivers/skyloong-gk104-pro" }
 openrustygb-driver-lexip-np93-alpha = { path = "../drivers/lexip-np93-alpha" }
 openrustygb-driver-lego-dimensions-toypad = { path = "../drivers/lego-dimensions-toypad" }
 openrustygb-driver-luxafor-flag = { path = "../drivers/luxafor-flag" }

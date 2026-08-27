@@ -521,3 +521,20 @@ matching device completes its live test.
 Physical Intel Arc A770 Limited Edition hardware was not present for this
 contraction. The family remains release-blocked by the global hardware-evidence
 policy until a matching device completes its live test.
+
+## SkyloongController
+
+- Rust package: `openrustygb-driver-skyloong-gk104-pro`
+- Device: Skyloong GK104 Pro keyboard
+- Match: VID `1EA7`, PID `0907`, interface `1`; the native detector does not constrain usage page or usage
+- Preserved model: one 106-key ANSI full-size matrix zone, Direct per-LED color, brightness `0..127`, and mode value `FFFF`
+- Preserved layout: the Keyboard Layout Manager's ANSI removals, shifted right key cluster, separate Left/Right Space LEDs, original 132-slot protocol values, and final 6-by-21 matrix map
+- Preserved lifecycle: CRC-protected Ping, Online, Ping reports on open and Offline on actor shutdown
+- Preserved output: 106 logical colors populate the original 528-byte LE definition, emitted as nine 56-byte chunks plus one 24-byte chunk, followed by the CRC-protected persistent-save command
+- Safety correction: brightness and exact color count are validated before opening hardware, every 65-byte report must be accepted in full, unused protocol slots are deterministically zeroed, and persistent writes require the explicit `--confirm-persistent-write` guard
+- Verification: exact interface matcher tests, CRC goldens, lifecycle-order tests, slot/chunk/brightness/save packet goldens, invalid-setting and short-write rejection, exact layout/model tests, executable read-only probe and guarded 106-color command, workspace Clippy and tests
+- Deleted native files: `SkyloongControllerDetect.cpp`, `SkyloongGK104ProController.cpp`, `SkyloongGK104ProController.h`, `RGBController_SkyloongGK104Pro.cpp`, `RGBController_SkyloongGK104Pro.h`
+
+Physical Skyloong GK104 Pro hardware was not present for this contraction. The
+family remains release-blocked by the global hardware-evidence policy until a
+matching device completes its live test.

@@ -158,6 +158,12 @@ use openrustygb_driver_skydimo_sk0902::{
     LED_COUNT as SKYDIMO_LED_COUNT, MATCH as SKYDIMO_MATCH,
     OUTPUT_REPORT_LEN as SKYDIMO_REPORT_LEN, matches as matches_skydimo,
 };
+use openrustygb_driver_skyloong_gk104_pro::{
+    DirectColorTransaction as SkyloongColorTransaction, Initialization as SkyloongInitialization,
+    InvalidSettings as SkyloongInvalidSettings, LED_COUNT as SKYLOONG_LED_COUNT,
+    MATCH as SKYLOONG_MATCH, OUTPUT_REPORT_LEN as SKYLOONG_REPORT_LEN,
+    Shutdown as SkyloongShutdown, matches as matches_skyloong,
+};
 use openrustygb_driver_tecknet_m008::{
     FEATURE_REPORT_LEN as TECKNET_REPORT_LEN, InvalidSpeed as TecknetInvalidSpeed,
     MATCH as TECKNET_MATCH, ModeColorTransaction as TecknetTransaction, TecknetMode,
@@ -184,6 +190,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         return Ok(());
     }
     print_usage();
+    print_skyloong_usage();
     Ok(())
 }
 
@@ -208,6 +215,7 @@ fn dispatch_probe(args: &[String]) -> Option<Result<(), Box<dyn Error>>> {
         [command] if command == "probe-glorious-model-i" => Some(probe_glorious()),
         [command] if command == "probe-hyte-keeb-tkl" => Some(probe_hyte()),
         [command] if command == "probe-intel-arc-a770-le" => Some(probe_intel_arc()),
+        [command] if command == "probe-skyloong-gk104-pro" => Some(probe_skyloong()),
         [command] if command == "probe-aorus-m2" => Some(probe_aorus()),
         [command] if command == "probe-aorus-case" => Some(probe_aorus_case()),
         [command] if command == "probe-hyperx-mousemat" => Some(probe_hyperx_mousemat()),
@@ -766,6 +774,30 @@ fn probe_intel_arc() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+fn probe_skyloong() -> Result<(), Box<dyn Error>> {
+    let endpoints = HidInventory::enumerate()?;
+    let exact: Vec<_> = endpoints
+        .iter()
+        .filter(|endpoint| matches_skyloong(endpoint))
+        .collect();
+    if exact.is_empty() {
+        println!("No exact Skyloong GK104 Pro lighting endpoint found.");
+    } else {
+        for endpoint in exact {
+            println!(
+                "Found Skyloong GK104 Pro endpoint: {:04X}:{:04X}, interface {}, usage {:04X}:{:04X}",
+                endpoint.vendor_id,
+                endpoint.product_id,
+                endpoint.interface_number,
+                endpoint.usage_page,
+                endpoint.usage
+            );
+        }
+    }
+    println!("Probe completed without opening a device or writing a report.");
+    Ok(())
+}
+
 fn probe_lego() -> Result<(), Box<dyn Error>> {
     let endpoints = HidInventory::enumerate()?;
     let exact: Vec<_> = endpoints
@@ -876,6 +908,9 @@ fn dispatch_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
 }
 
 fn dispatch_structured_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
+    if dispatch_skyloong_write(args)? {
+        return Ok(true);
+    }
     if dispatch_glorious_write(args)? {
         return Ok(true);
     }
@@ -913,6 +948,20 @@ fn dispatch_structured_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
         return Ok(true);
     }
     Ok(false)
+}
+
+fn dispatch_skyloong_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
+    let [command, confirmation, brightness, colors @ ..] = args else {
+        return Ok(false);
+    };
+    if command != "set-skyloong-gk104-pro" || confirmation != "--confirm-persistent-write" {
+        return Ok(false);
+    }
+    set_skyloong_colors(
+        parse_u8_decimal(brightness, "brightness")?,
+        &parse_rgb_colors(colors)?,
+    )?;
+    Ok(true)
 }
 
 fn dispatch_glorious_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
@@ -1363,6 +1412,13 @@ fn print_usage() {
          <direct|breathing|single-breath|off> RRGGBB <brightness> <speed>\n  \
          openrustygb set-faustus-mode --confirm-reversible-write \
          <static|breathing|color-cycle|strobe> RRGGBB"
+    );
+}
+
+fn print_skyloong_usage() {
+    eprintln!(
+        "  openrustygb probe-skyloong-gk104-pro\n  \
+         openrustygb set-skyloong-gk104-pro --confirm-persistent-write <brightness-0-127> <106-RRGGBB-colors>"
     );
 }
 
@@ -2353,6 +2409,44 @@ fn set_intel_arc_colors(colors: &[Rgb8]) -> Result<(), Box<dyn Error>> {
     println!(
         "Applied one reversible Intel Arc A770 Limited Edition per-LED transaction (firmware {firmware})."
     );
+    Ok(())
+}
+
+fn set_skyloong_colors(brightness: u8, colors: &[Rgb8]) -> Result<(), Box<dyn Error>> {
+    SkyloongColorTransaction::new(colors, brightness)?;
+    let endpoints = HidInventory::enumerate()?;
+    let mut exact = endpoints.into_iter().filter(matches_skyloong);
+    let endpoint = exact
+        .next()
+        .ok_or("exact Skyloong GK104 Pro lighting endpoint not found")?;
+    if exact.next().is_some() {
+        return Err("more than one Skyloong GK104 Pro endpoint found; refusing to choose".into());
+    }
+    let output = HidOutput::<SKYLOONG_REPORT_LEN>::open_matching(&endpoint, SKYLOONG_MATCH)?;
+    let backend = SkyloongBackend::initialize(output)?;
+    let target = ControllerRef {
+        id: ControllerId::new(NonZeroU64::new(34).expect("thirty-four is non-zero")),
+        incarnation: Incarnation::new(NonZeroU32::new(1).expect("one is non-zero")),
+    };
+    let actor = ControllerActor::start(target, backend, 4)?;
+    let outcome = actor
+        .submit_barrier(
+            target,
+            SkyloongCommand {
+                brightness,
+                colors: colors.to_vec(),
+            },
+        )?
+        .wait()?;
+    actor.shutdown()?;
+    match outcome {
+        CommandOutcome::Applied { .. } => {}
+        CommandOutcome::Failed { error, .. } => return Err(error.into()),
+        CommandOutcome::Superseded { .. } => {
+            return Err("Skyloong GK104 Pro color command was unexpectedly superseded".into());
+        }
+    }
+    println!("Applied and persistently saved one Skyloong GK104 Pro per-LED transaction.");
     Ok(())
 }
 
@@ -3912,6 +4006,70 @@ impl ControllerBackend for IntelArcBackend {
 
     fn shutdown(&mut self) -> Result<(), Self::Error> {
         Ok(())
+    }
+}
+
+#[derive(Clone, Debug)]
+struct SkyloongCommand {
+    brightness: u8,
+    colors: Vec<Rgb8>,
+}
+
+#[derive(Debug)]
+struct SkyloongBackend {
+    output: HidOutput<SKYLOONG_REPORT_LEN>,
+}
+
+impl SkyloongBackend {
+    fn initialize(
+        mut output: HidOutput<SKYLOONG_REPORT_LEN>,
+    ) -> Result<Self, ExactWriteError<HidTransportError>> {
+        SkyloongInitialization::new().apply(&mut output)?;
+        Ok(Self { output })
+    }
+}
+
+#[derive(Debug)]
+enum SkyloongBackendError {
+    Settings(SkyloongInvalidSettings),
+    Output(ExactWriteError<HidTransportError>),
+}
+
+impl fmt::Display for SkyloongBackendError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Settings(error) => write!(f, "invalid Skyloong colors: {error}"),
+            Self::Output(error) => {
+                write!(f, "could not communicate with Skyloong keyboard: {error}")
+            }
+        }
+    }
+}
+
+impl Error for SkyloongBackendError {}
+
+impl ControllerBackend for SkyloongBackend {
+    type Barrier = SkyloongCommand;
+    type Error = SkyloongBackendError;
+
+    fn apply_whole_color(&mut self, color: Rgb8) -> Result<(), Self::Error> {
+        SkyloongColorTransaction::new(&[color; SKYLOONG_LED_COUNT], 127)
+            .map_err(SkyloongBackendError::Settings)?
+            .apply(&mut self.output)
+            .map_err(SkyloongBackendError::Output)
+    }
+
+    fn apply_barrier(&mut self, command: Self::Barrier) -> Result<(), Self::Error> {
+        SkyloongColorTransaction::new(&command.colors, command.brightness)
+            .map_err(SkyloongBackendError::Settings)?
+            .apply(&mut self.output)
+            .map_err(SkyloongBackendError::Output)
+    }
+
+    fn shutdown(&mut self) -> Result<(), Self::Error> {
+        SkyloongShutdown::new()
+            .apply(&mut self.output)
+            .map_err(SkyloongBackendError::Output)
     }
 }
 

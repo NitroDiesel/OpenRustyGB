@@ -39,6 +39,7 @@ members = [
     "crates/drivers/glorious-model-i",
     "crates/drivers/hyte-keeb-tkl",
     "crates/drivers/intel-arc-a770-le",
+    "crates/drivers/skyloong-gk104-pro",
     "crates/openrustygb-app",
     "xtask",
 ]
