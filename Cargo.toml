@@ -40,6 +40,7 @@ members = [
     "crates/drivers/hyte-keeb-tkl",
     "crates/drivers/intel-arc-a770-le",
     "crates/drivers/skyloong-gk104-pro",
+    "crates/drivers/anne-pro-2",
     "crates/openrustygb-app",
     "xtask",
 ]

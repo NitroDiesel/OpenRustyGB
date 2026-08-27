@@ -10,6 +10,7 @@ const PINNED_DETECTOR_SOURCES: usize = 224;
 const PORTED_FAMILIES: &[(&str, &str)] = &[
     ("AOCMouseController", "aoc-gm500-mouse"),
     ("AOCMousematController", "aoc-amm700-mousemat"),
+    ("AnnePro2Controller", "anne-pro-2"),
     ("AresonController", "areson-mice"),
     ("AsusMonitorController", "asus-monitor"),
     ("ClevoLightbarController", "clevo-lightbar"),
@@ -49,6 +50,7 @@ const PORTED_FAMILIES: &[(&str, &str)] = &[
 const PORTED_DETECTOR_SOURCES: &[&str] = &[
     "Controllers/AOCMouseController/AOCMouseControllerDetect.cpp",
     "Controllers/AOCMousematController/AOCMousematControllerDetect.cpp",
+    "Controllers/AnnePro2Controller/AnnePro2ControllerDetect.cpp",
     "Controllers/AresonController/AresonControllerDetect.cpp",
     "Controllers/AsusMonitorController/AsusMonitorControllerDetect.cpp",
     "Controllers/ClevoLightbarController/ClevoLightbarControllerDetect.cpp",

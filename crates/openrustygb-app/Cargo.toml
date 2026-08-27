@@ -9,6 +9,7 @@ repository.workspace = true
 [dependencies]
 openrustygb-driver-aoc-amm700-mousemat = { path = "../drivers/aoc-amm700-mousemat" }
 openrustygb-driver-aoc-gm500-mouse = { path = "../drivers/aoc-gm500-mouse" }
+openrustygb-driver-anne-pro-2 = { path = "../drivers/anne-pro-2" }
 openrustygb-driver-asus-monitor = { path = "../drivers/asus-monitor" }
 openrustygb-driver-clevo-lightbar = { path = "../drivers/clevo-lightbar" }
 openrustygb-domain = { path = "../openrustygb-domain" }

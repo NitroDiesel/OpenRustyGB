@@ -7,6 +7,11 @@ use std::num::{NonZeroU32, NonZeroU64};
 use std::path::Path;
 
 use openrustygb_domain::{ControllerId, ControllerRef, Incarnation, Rgb8};
+use openrustygb_driver_anne_pro_2::{
+    DirectColorTransaction as AnnePro2ColorTransaction,
+    InvalidColorCount as AnnePro2InvalidColorCount, LED_COUNT as ANNE_PRO_2_LED_COUNT,
+    OUTPUT_REPORT_LEN as ANNE_PRO_2_REPORT_LEN, match_model as match_anne_pro_2,
+};
 use openrustygb_driver_aoc_amm700_mousemat::{
     AocMode, Direction as AocDirection, FEATURE_REPORT_LEN as AOC_REPORT_LEN,
     InvalidSettings as AocInvalidSettings, MATCH as AOC_MATCH,
@@ -191,6 +196,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     }
     print_usage();
     print_skyloong_usage();
+    print_anne_pro_2_usage();
     Ok(())
 }
 
@@ -199,6 +205,7 @@ fn dispatch_probe(args: &[String]) -> Option<Result<(), Box<dyn Error>>> {
         [] => Some(probe()),
         [command] if command == "probe-aoc-amm700" => Some(probe_aoc()),
         [command] if command == "probe-aoc-gm500" => Some(probe_aoc_mouse()),
+        [command] if command == "probe-anne-pro-2" => Some(probe_anne_pro_2()),
         [command] if command == "probe-asus-monitor" => Some(probe_asus_monitor()),
         [command] if command == "probe-clevo-lightbar" => Some(probe_clevo()),
         [command] if command == "probe-areson" => Some(probe_areson()),
@@ -590,6 +597,30 @@ fn probe_nzxt() -> Result<(), Box<dyn Error>> {
         for endpoint in exact {
             println!(
                 "Found exact NZXT Lift endpoint: {:04X}:{:04X}, interface {}, usage {:04X}:{:04X}",
+                endpoint.vendor_id,
+                endpoint.product_id,
+                endpoint.interface_number,
+                endpoint.usage_page,
+                endpoint.usage
+            );
+        }
+    }
+    println!("Probe completed without opening a device or writing a report.");
+    Ok(())
+}
+
+fn probe_anne_pro_2() -> Result<(), Box<dyn Error>> {
+    let endpoints = HidInventory::enumerate()?;
+    let exact: Vec<_> = endpoints
+        .iter()
+        .filter_map(|endpoint| match_anne_pro_2(endpoint).map(|model| (endpoint, model)))
+        .collect();
+    if exact.is_empty() {
+        println!("No exact Anne Pro 2 lighting endpoint found.");
+    } else {
+        for (endpoint, _) in exact {
+            println!(
+                "Found Anne Pro 2 endpoint: {:04X}:{:04X}, interface {}, usage {:04X}:{:04X}",
                 endpoint.vendor_id,
                 endpoint.product_id,
                 endpoint.interface_number,
@@ -1288,7 +1319,8 @@ fn dispatch_per_led_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
 
     if !matches!(
         command.as_str(),
-        "set-asus-monitor"
+        "set-anne-pro-2"
+            | "set-asus-monitor"
             | "set-hyperx-mousemat"
             | "set-dark-project"
             | "set-stream-deck"
@@ -1300,6 +1332,7 @@ fn dispatch_per_led_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
     }
     let colors = parse_rgb_colors(colors)?;
     match command.as_str() {
+        "set-anne-pro-2" => set_anne_pro_2_colors(&colors)?,
         "set-asus-monitor" => set_asus_monitor_colors(colors)?,
         "set-hyperx-mousemat" => set_hyperx_mousemat_colors(colors)?,
         "set-dark-project" => set_dark_project_colors(colors)?,
@@ -1419,6 +1452,13 @@ fn print_skyloong_usage() {
     eprintln!(
         "  openrustygb probe-skyloong-gk104-pro\n  \
          openrustygb set-skyloong-gk104-pro --confirm-persistent-write <brightness-0-127> <106-RRGGBB-colors>"
+    );
+}
+
+fn print_anne_pro_2_usage() {
+    eprintln!(
+        "  openrustygb probe-anne-pro-2\n  \
+         openrustygb set-anne-pro-2 --confirm-reversible-write <61-RRGGBB-colors>"
     );
 }
 
@@ -2447,6 +2487,44 @@ fn set_skyloong_colors(brightness: u8, colors: &[Rgb8]) -> Result<(), Box<dyn Er
         }
     }
     println!("Applied and persistently saved one Skyloong GK104 Pro per-LED transaction.");
+    Ok(())
+}
+
+fn set_anne_pro_2_colors(colors: &[Rgb8]) -> Result<(), Box<dyn Error>> {
+    AnnePro2ColorTransaction::new(colors)?;
+    let endpoints = HidInventory::enumerate()?;
+    let mut exact = endpoints
+        .into_iter()
+        .filter_map(|endpoint| match_anne_pro_2(&endpoint).map(|model| (endpoint, model)));
+    let (endpoint, model) = exact
+        .next()
+        .ok_or("exact Anne Pro 2 lighting endpoint not found")?;
+    if exact.next().is_some() {
+        return Err("more than one Anne Pro 2 endpoint found; refusing to choose".into());
+    }
+    let output = HidOutput::<ANNE_PRO_2_REPORT_LEN>::open_matching(&endpoint, model.matcher)?;
+    let target = ControllerRef {
+        id: ControllerId::new(NonZeroU64::new(35).expect("thirty-five is non-zero")),
+        incarnation: Incarnation::new(NonZeroU32::new(1).expect("one is non-zero")),
+    };
+    let actor = ControllerActor::start(target, AnnePro2Backend { output }, 4)?;
+    let outcome = actor
+        .submit_barrier(
+            target,
+            AnnePro2Command {
+                colors: colors.to_vec(),
+            },
+        )?
+        .wait()?;
+    actor.shutdown()?;
+    match outcome {
+        CommandOutcome::Applied { .. } => {}
+        CommandOutcome::Failed { error, .. } => return Err(error.into()),
+        CommandOutcome::Superseded { .. } => {
+            return Err("Anne Pro 2 color command was unexpectedly superseded".into());
+        }
+    }
+    println!("Applied one reversible Anne Pro 2 per-LED transaction.");
     Ok(())
 }
 
@@ -4002,6 +4080,56 @@ impl ControllerBackend for IntelArcBackend {
             .map_err(IntelArcBackendError::Settings)?
             .apply(&mut self.output)
             .map_err(IntelArcBackendError::Output)
+    }
+
+    fn shutdown(&mut self) -> Result<(), Self::Error> {
+        Ok(())
+    }
+}
+
+#[derive(Clone, Debug)]
+struct AnnePro2Command {
+    colors: Vec<Rgb8>,
+}
+
+#[derive(Debug)]
+struct AnnePro2Backend {
+    output: HidOutput<ANNE_PRO_2_REPORT_LEN>,
+}
+
+#[derive(Debug)]
+enum AnnePro2BackendError {
+    Settings(AnnePro2InvalidColorCount),
+    Output(ExactWriteError<HidTransportError>),
+}
+
+impl fmt::Display for AnnePro2BackendError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Settings(error) => write!(f, "invalid Anne Pro 2 colors: {error}"),
+            Self::Output(error) => write!(f, "could not apply Anne Pro 2 colors: {error}"),
+        }
+    }
+}
+
+impl Error for AnnePro2BackendError {}
+
+impl ControllerBackend for AnnePro2Backend {
+    type Barrier = AnnePro2Command;
+    type Error = AnnePro2BackendError;
+
+    fn apply_whole_color(&mut self, color: Rgb8) -> Result<(), Self::Error> {
+        AnnePro2ColorTransaction::new(&[color; ANNE_PRO_2_LED_COUNT])
+            .map_err(AnnePro2BackendError::Settings)?
+            .apply(&mut self.output)
+            .map_err(AnnePro2BackendError::Output)
+    }
+
+    fn apply_barrier(&mut self, command: Self::Barrier) -> Result<(), Self::Error> {
+        AnnePro2ColorTransaction::new(&command.colors)
+            .map_err(AnnePro2BackendError::Settings)?
+            .apply(&mut self.output)
+            .map_err(AnnePro2BackendError::Output)
     }
 
     fn shutdown(&mut self) -> Result<(), Self::Error> {

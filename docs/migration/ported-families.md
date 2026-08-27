@@ -538,3 +538,19 @@ policy until a matching device completes its live test.
 Physical Skyloong GK104 Pro hardware was not present for this contraction. The
 family remains release-blocked by the global hardware-evidence policy until a
 matching device completes its live test.
+
+## AnnePro2Controller
+
+- Rust package: `openrustygb-driver-anne-pro-2`
+- Device: Obinslab Anne Pro 2 keyboard
+- Match: interface `1` for VID/PID `04D9:8008`, `04D9:8009`, `04D9:A292`, `04D9:A293`, and `3311:A297`; the native detectors do not constrain usage page or usage
+- Preserved model: one 61-key matrix zone, Direct per-LED color, the original key names, and the 5-by-14 logical matrix
+- Preserved output: 61 logical colors map into the original 70 physical RGB positions and 210-byte frame, fragmented into five 64-byte reports with service header `00 7B 10 41`, command header `20 03 FF 02`, packet markers `50..54`, and the native 50 ms pacing after each write
+- Safety correction: nine physical gap positions and the final report tail are deterministically zero-filled, replacing native uninitialized memory and an out-of-bounds final-packet read; exact color count and complete 64-byte writes are required
+- Preserved metadata: name `Anne Pro 2`, vendor `Obinslab`, description `Obinslab Anne Pro 2 Device`, HID path, and endpoint serial metadata
+- Verification: all five endpoint matcher tests, header/fragment-size and zero-tail goldens, physical-gap mapping golden, short-write and invalid-count rejection, matrix/model tests, executable read-only probe and guarded 61-color command, workspace Clippy and tests
+- Deleted native files: `AnnePro2ControllerDetect.cpp`, `AnnePro2Controller.cpp`, `AnnePro2Controller.h`, `RGBController_AnnePro2.cpp`, `RGBController_AnnePro2.h`
+
+Physical Anne Pro 2 hardware was not present for this contraction. The family
+remains release-blocked by the global hardware-evidence policy until a matching
+device completes its live test.
