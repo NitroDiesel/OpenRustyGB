@@ -94,6 +94,13 @@ use openrustygb_driver_instant_mice::{
     InstantMouseModel, InvalidSettings as InstantInvalidSettings,
     ModeTransaction as InstantModeTransaction, match_model as match_instant_mouse,
 };
+use openrustygb_driver_intel_arc_a770_le::{
+    DirectColorTransaction as IntelArcColorTransaction, ExchangeError as IntelArcExchangeError,
+    FirmwareQuery as IntelArcFirmwareQuery, Initialization as IntelArcInitialization,
+    InvalidColorCount as IntelArcInvalidColorCount, LED_COUNT as INTEL_ARC_LED_COUNT,
+    MATCH as INTEL_ARC_MATCH, OUTPUT_REPORT_LEN as INTEL_ARC_REPORT_LEN,
+    matches as matches_intel_arc,
+};
 use openrustygb_driver_lego_dimensions_toypad::{
     Activation as LegoActivation, DirectColorTransaction as LegoDirectColorTransaction,
     MATCH as LEGO_MATCH, ModeTransaction as LegoModeTransaction,
@@ -200,6 +207,7 @@ fn dispatch_probe(args: &[String]) -> Option<Result<(), Box<dyn Error>>> {
         [command] if command == "probe-gamesir" => Some(probe_gamesir()),
         [command] if command == "probe-glorious-model-i" => Some(probe_glorious()),
         [command] if command == "probe-hyte-keeb-tkl" => Some(probe_hyte()),
+        [command] if command == "probe-intel-arc-a770-le" => Some(probe_intel_arc()),
         [command] if command == "probe-aorus-m2" => Some(probe_aorus()),
         [command] if command == "probe-aorus-case" => Some(probe_aorus_case()),
         [command] if command == "probe-hyperx-mousemat" => Some(probe_hyperx_mousemat()),
@@ -734,6 +742,30 @@ fn probe_hyte() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+fn probe_intel_arc() -> Result<(), Box<dyn Error>> {
+    let endpoints = HidInventory::enumerate()?;
+    let exact: Vec<_> = endpoints
+        .iter()
+        .filter(|endpoint| matches_intel_arc(endpoint))
+        .collect();
+    if exact.is_empty() {
+        println!("No exact Intel Arc A770 Limited Edition lighting endpoint found.");
+    } else {
+        for endpoint in exact {
+            println!(
+                "Found Intel Arc A770 Limited Edition endpoint: {:04X}:{:04X}, interface {}, usage {:04X}:{:04X}",
+                endpoint.vendor_id,
+                endpoint.product_id,
+                endpoint.interface_number,
+                endpoint.usage_page,
+                endpoint.usage
+            );
+        }
+    }
+    println!("Probe completed without opening a device or writing a report.");
+    Ok(())
+}
+
 fn probe_lego() -> Result<(), Box<dyn Error>> {
     let endpoints = HidInventory::enumerate()?;
     let exact: Vec<_> = endpoints
@@ -1213,6 +1245,7 @@ fn dispatch_per_led_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
             | "set-stream-deck"
             | "set-skydimo"
             | "set-hyte-keeb-tkl"
+            | "set-intel-arc-a770-le"
     ) {
         return Ok(false);
     }
@@ -1224,6 +1257,7 @@ fn dispatch_per_led_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
         "set-stream-deck" => set_stream_deck_colors(colors)?,
         "set-skydimo" => set_skydimo_colors(colors)?,
         "set-hyte-keeb-tkl" => set_hyte_colors(&colors)?,
+        "set-intel-arc-a770-le" => set_intel_arc_colors(&colors)?,
         _ => unreachable!("command was checked above"),
     }
     Ok(true)
@@ -1246,6 +1280,7 @@ fn print_usage() {
          openrustygb probe-gamesir\n  \
          openrustygb probe-glorious-model-i\n  \
          openrustygb probe-hyte-keeb-tkl\n  \
+         openrustygb probe-intel-arc-a770-le\n  \
          openrustygb probe-hyperx-mousemat\n  \
          openrustygb probe-instant-mouse\n  \
          openrustygb probe-lego-toypad\n  \
@@ -1284,6 +1319,7 @@ fn print_usage() {
          openrustygb set-haste2-color --confirm-reversible-write RRGGBB\n  \
          openrustygb set-hyperx-mousemat --confirm-reversible-write <RRGGBB...>\n  \
          openrustygb set-hyte-keeb-tkl --confirm-reversible-write <98-key-RRGGBB-colors> <63-underglow-RRGGBB-colors>\n  \
+         openrustygb set-intel-arc-a770-le --confirm-reversible-write <91-RRGGBB-colors>\n  \
          openrustygb set-instant-mouse --confirm-reversible-write \
          <direct|rainbow-wave|spectrum|breathing|fill|loop|enraptured|flicker|ripple|star-treck|off> \
          RRGGBB <brightness> <speed> <left|right>\n  \
@@ -2269,6 +2305,54 @@ fn set_hyte_colors(colors: &[Rgb8]) -> Result<(), Box<dyn Error>> {
         }
     }
     println!("Applied one reversible HYTE Keeb TKL per-LED transaction.");
+    Ok(())
+}
+
+fn set_intel_arc_colors(colors: &[Rgb8]) -> Result<(), Box<dyn Error>> {
+    if colors.len() != INTEL_ARC_LED_COUNT {
+        return Err(format!(
+            "Intel Arc A770 Limited Edition requires {INTEL_ARC_LED_COUNT} colors, got {}",
+            colors.len()
+        )
+        .into());
+    }
+    let endpoints = HidInventory::enumerate()?;
+    let mut exact = endpoints.into_iter().filter(matches_intel_arc);
+    let endpoint = exact
+        .next()
+        .ok_or("exact Intel Arc A770 Limited Edition lighting endpoint not found")?;
+    if exact.next().is_some() {
+        return Err(
+            "more than one Intel Arc A770 Limited Edition endpoint found; refusing to choose"
+                .into(),
+        );
+    }
+    let output = HidOutput::<INTEL_ARC_REPORT_LEN>::open_matching(&endpoint, INTEL_ARC_MATCH)?;
+    let (backend, firmware) = IntelArcBackend::initialize(output)?;
+    let target = ControllerRef {
+        id: ControllerId::new(NonZeroU64::new(33).expect("thirty-three is non-zero")),
+        incarnation: Incarnation::new(NonZeroU32::new(1).expect("one is non-zero")),
+    };
+    let actor = ControllerActor::start(target, backend, 4)?;
+    let outcome = actor
+        .submit_barrier(
+            target,
+            IntelArcCommand {
+                colors: colors.to_vec(),
+            },
+        )?
+        .wait()?;
+    actor.shutdown()?;
+    match outcome {
+        CommandOutcome::Applied { .. } => {}
+        CommandOutcome::Failed { error, .. } => return Err(error.into()),
+        CommandOutcome::Superseded { .. } => {
+            return Err("Intel Arc color command was unexpectedly superseded".into());
+        }
+    }
+    println!(
+        "Applied one reversible Intel Arc A770 Limited Edition per-LED transaction (firmware {firmware})."
+    );
     Ok(())
 }
 
@@ -3764,6 +3848,66 @@ impl ControllerBackend for HyteBackend {
             .map_err(HyteBackendError::Settings)?
             .apply(&mut self.output)
             .map_err(HyteBackendError::Output)
+    }
+
+    fn shutdown(&mut self) -> Result<(), Self::Error> {
+        Ok(())
+    }
+}
+
+#[derive(Clone, Debug)]
+struct IntelArcCommand {
+    colors: Vec<Rgb8>,
+}
+
+#[derive(Debug)]
+struct IntelArcBackend {
+    output: HidOutput<INTEL_ARC_REPORT_LEN>,
+}
+
+impl IntelArcBackend {
+    fn initialize(
+        mut output: HidOutput<INTEL_ARC_REPORT_LEN>,
+    ) -> Result<(Self, String), IntelArcExchangeError<HidTransportError>> {
+        let firmware = IntelArcFirmwareQuery::new().apply(&mut output)?;
+        IntelArcInitialization::new().apply(&mut output)?;
+        Ok((Self { output }, firmware))
+    }
+}
+
+#[derive(Debug)]
+enum IntelArcBackendError {
+    Settings(IntelArcInvalidColorCount),
+    Output(IntelArcExchangeError<HidTransportError>),
+}
+
+impl fmt::Display for IntelArcBackendError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Settings(error) => write!(f, "invalid Intel Arc colors: {error}"),
+            Self::Output(error) => write!(f, "could not apply Intel Arc colors: {error}"),
+        }
+    }
+}
+
+impl Error for IntelArcBackendError {}
+
+impl ControllerBackend for IntelArcBackend {
+    type Barrier = IntelArcCommand;
+    type Error = IntelArcBackendError;
+
+    fn apply_whole_color(&mut self, color: Rgb8) -> Result<(), Self::Error> {
+        IntelArcColorTransaction::new(&[color; INTEL_ARC_LED_COUNT])
+            .map_err(IntelArcBackendError::Settings)?
+            .apply(&mut self.output)
+            .map_err(IntelArcBackendError::Output)
+    }
+
+    fn apply_barrier(&mut self, command: Self::Barrier) -> Result<(), Self::Error> {
+        IntelArcColorTransaction::new(&command.colors)
+            .map_err(IntelArcBackendError::Settings)?
+            .apply(&mut self.output)
+            .map_err(IntelArcBackendError::Output)
     }
 
     fn shutdown(&mut self) -> Result<(), Self::Error> {

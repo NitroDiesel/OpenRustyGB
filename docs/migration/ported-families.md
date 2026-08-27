@@ -504,3 +504,20 @@ matching device completes its live test.
 Physical HYTE Keeb TKL hardware was not present for this contraction. The
 family remains release-blocked by the global hardware-evidence policy until a
 matching device completes its live test.
+
+## IntelArcA770LEController
+
+- Rust package: `openrustygb-driver-intel-arc-a770-le`
+- Device: Intel Arc A770 Limited Edition graphics card
+- Match: VID `2516`, PID `01B5`, interface `1`, usage page `FF00`; the native detector does not constrain usage
+- Preserved model: Fan 1 and Fan 2 zones with 16 LEDs each, Back with 8, Ring with 50, and one Logo LED; Direct per-LED color and the native fixed `0..0` brightness surface
+- Preserved metadata: product name and description `Intel Arc A770 Limited Edition`, vendor `Cooler Master`, exact HID-path identity, and the firmware string decoded from alternating response bytes
+- Preserved initialization: firmware request `12 20`, enable `41 03`, then apply `51 28`, each as a 65-byte write followed by its 64-byte response
+- Preserved output: 91 logical colors are serialized with the original LED IDs into seven `C0 01` packets of at most 15 LEDs; the white-only logo uses the maximum RGB channel in its red byte
+- Safety correction: all writes and acknowledgements must be complete, invalid color counts are rejected, and transfer errors no longer leave response data unchecked
+- Verification: exact interface/page matcher tests, firmware response golden, enable/apply order golden, LED-ID/chunk/color/logo packet goldens, incomplete-acknowledgement rejection, color-count and model-shape tests, executable read-only probe and guarded 91-color command, workspace Clippy and tests
+- Deleted native files: `IntelArcA770LEController.cpp`, `IntelArcA770LEController.h`, `IntelArcA770LEControllerDetect.cpp`, `RGBController_IntelArcA770LE.cpp`, `RGBController_IntelArcA770LE.h`
+
+Physical Intel Arc A770 Limited Edition hardware was not present for this
+contraction. The family remains release-blocked by the global hardware-evidence
+policy until a matching device completes its live test.
