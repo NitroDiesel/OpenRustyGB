@@ -26,6 +26,7 @@ const PORTED_FAMILIES: &[(&str, &str)] = &[
     ("HYTEKeyboardController", "hyte-keeb-tkl"),
     ("InstantMouseController", "instant-mice"),
     ("IntelArcA770LEController", "intel-arc-a770-le"),
+    ("IonicoController", "ionico"),
     ("LaviewTechnologyController", "glorious-model-i"),
     ("LexipMouseController", "lexip-np93-alpha"),
     (
@@ -65,6 +66,7 @@ const PORTED_DETECTOR_SOURCES: &[&str] = &[
     "Controllers/HYTEKeyboardController/HYTEKeyboardControllerDetect.cpp",
     "Controllers/InstantMouseController/InstantMouseControllerDetect.cpp",
     "Controllers/IntelArcA770LEController/IntelArcA770LEControllerDetect.cpp",
+    "Controllers/IonicoController/IonicoControllerDetect.cpp",
     "Controllers/LaviewTechnologyController/LaviewTechnologyDetector.cpp",
     "Controllers/LexipMouseController/LexipMouseControllerDetect.cpp",
     "Controllers/LegoDimensionsToypadBaseController/LegoDimensionsToypadBaseControllerDetect.cpp",

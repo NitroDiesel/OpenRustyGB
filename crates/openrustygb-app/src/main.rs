@@ -106,6 +106,12 @@ use openrustygb_driver_intel_arc_a770_le::{
     MATCH as INTEL_ARC_MATCH, OUTPUT_REPORT_LEN as INTEL_ARC_REPORT_LEN,
     matches as matches_intel_arc,
 };
+use openrustygb_driver_ionico::{
+    ApplyError as IonicoApplyError, InvalidSettings as IonicoInvalidSettings, IonicoMode,
+    IonicoModel, ModeTransaction as IonicoModeTransaction,
+    OUTPUT_REPORT_LEN as IONICO_OUTPUT_REPORT_LEN, SaveTransaction as IonicoSaveTransaction,
+    match_model as match_ionico,
+};
 use openrustygb_driver_lego_dimensions_toypad::{
     Activation as LegoActivation, DirectColorTransaction as LegoDirectColorTransaction,
     MATCH as LEGO_MATCH, ModeTransaction as LegoModeTransaction,
@@ -197,6 +203,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     print_usage();
     print_skyloong_usage();
     print_anne_pro_2_usage();
+    print_ionico_usage();
     Ok(())
 }
 
@@ -227,6 +234,7 @@ fn dispatch_probe(args: &[String]) -> Option<Result<(), Box<dyn Error>>> {
         [command] if command == "probe-aorus-case" => Some(probe_aorus_case()),
         [command] if command == "probe-hyperx-mousemat" => Some(probe_hyperx_mousemat()),
         [command] if command == "probe-instant-mouse" => Some(probe_instant_mouse()),
+        [command] if command == "probe-ionico" => Some(probe_ionico()),
         [command] if command == "probe-lego-toypad" => Some(probe_lego()),
         [command] if command == "probe-luxafor" => Some(probe_luxafor()),
         [command] if command == "probe-lexip" => Some(probe_lexip()),
@@ -732,6 +740,31 @@ fn probe_instant_mouse() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+fn probe_ionico() -> Result<(), Box<dyn Error>> {
+    let endpoints = HidInventory::enumerate()?;
+    let exact: Vec<_> = endpoints
+        .iter()
+        .filter_map(|endpoint| match_ionico(endpoint).map(|model| (endpoint, model)))
+        .collect();
+    if exact.is_empty() {
+        println!("No exact Ionico keyboard or front-bar endpoint found.");
+    } else {
+        for (endpoint, model) in exact {
+            println!(
+                "Found {} endpoint: {:04X}:{:04X}, interface {}, usage {:04X}:{:04X}",
+                model.name(),
+                endpoint.vendor_id,
+                endpoint.product_id,
+                endpoint.interface_number,
+                endpoint.usage_page,
+                endpoint.usage
+            );
+        }
+    }
+    println!("Probe completed without opening a device or writing a report.");
+    Ok(())
+}
+
 fn probe_glorious() -> Result<(), Box<dyn Error>> {
     let endpoints = HidInventory::enumerate()?;
     let exact: Vec<_> = endpoints
@@ -939,6 +972,9 @@ fn dispatch_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
 }
 
 fn dispatch_structured_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
+    if dispatch_ionico_write(args)? {
+        return Ok(true);
+    }
     if dispatch_skyloong_write(args)? {
         return Ok(true);
     }
@@ -979,6 +1015,37 @@ fn dispatch_structured_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
         return Ok(true);
     }
     Ok(false)
+}
+
+fn dispatch_ionico_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
+    match args {
+        [command, confirmation, model]
+            if command == "save-ionico" && confirmation == "--confirm-persistent-write" =>
+        {
+            set_ionico(parse_ionico_model(model)?, IonicoCommand::Save)?;
+        }
+        [
+            command,
+            confirmation,
+            model,
+            mode,
+            brightness,
+            speed,
+            colors @ ..,
+        ] if command == "set-ionico" && confirmation == "--confirm-reversible-write" => {
+            set_ionico(
+                parse_ionico_model(model)?,
+                IonicoCommand::Mode {
+                    mode: parse_ionico_mode(mode)?,
+                    colors: parse_rgb_colors(colors)?,
+                    brightness: parse_u8_decimal(brightness, "brightness")?,
+                    speed: parse_u8_decimal(speed, "speed")?,
+                },
+            )?;
+        }
+        _ => return Ok(false),
+    }
+    Ok(true)
 }
 
 fn dispatch_skyloong_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
@@ -1459,6 +1526,15 @@ fn print_anne_pro_2_usage() {
     eprintln!(
         "  openrustygb probe-anne-pro-2\n  \
          openrustygb set-anne-pro-2 --confirm-reversible-write <61-RRGGBB-colors>"
+    );
+}
+
+fn print_ionico_usage() {
+    eprintln!(
+        "  openrustygb probe-ionico\n  \
+         openrustygb set-ionico --confirm-reversible-write <keyboard|front-bar> \
+         <direct|breathing|wave|raindrops|flashing|off> <brightness-0-50> <speed-0-10> <RRGGBB...>\n  \
+         openrustygb save-ionico --confirm-persistent-write <keyboard|front-bar>"
     );
 }
 
@@ -2525,6 +2601,50 @@ fn set_anne_pro_2_colors(colors: &[Rgb8]) -> Result<(), Box<dyn Error>> {
         }
     }
     println!("Applied one reversible Anne Pro 2 per-LED transaction.");
+    Ok(())
+}
+
+fn set_ionico(model: IonicoModel, command: IonicoCommand) -> Result<(), Box<dyn Error>> {
+    if let IonicoCommand::Mode {
+        mode,
+        colors,
+        brightness,
+        speed,
+    } = &command
+    {
+        IonicoModeTransaction::new(model, *mode, colors, *brightness, *speed)?;
+    }
+    let endpoints = HidInventory::enumerate()?;
+    let mut exact = endpoints
+        .into_iter()
+        .filter(|endpoint| model.matcher().matches(endpoint));
+    let endpoint = exact
+        .next()
+        .ok_or("exact selected Ionico endpoint not found")?;
+    if exact.next().is_some() {
+        return Err("more than one selected Ionico endpoint found; refusing to choose".into());
+    }
+    let output = HidOutput::<IONICO_OUTPUT_REPORT_LEN>::open_matching(&endpoint, model.matcher())?;
+    let target = ControllerRef {
+        id: ControllerId::new(NonZeroU64::new(36).expect("thirty-six is non-zero")),
+        incarnation: Incarnation::new(NonZeroU32::new(1).expect("one is non-zero")),
+    };
+    let actor = ControllerActor::start(target, IonicoBackend { model, output }, 4)?;
+    let persistent = matches!(command, IonicoCommand::Save);
+    let outcome = actor.submit_barrier(target, command)?.wait()?;
+    actor.shutdown()?;
+    match outcome {
+        CommandOutcome::Applied { .. } => {}
+        CommandOutcome::Failed { error, .. } => return Err(error.into()),
+        CommandOutcome::Superseded { .. } => {
+            return Err("Ionico command was unexpectedly superseded".into());
+        }
+    }
+    if persistent {
+        println!("Persisted the current selected Ionico state to BIOS.");
+    } else {
+        println!("Applied one reversible Ionico mode transaction.");
+    }
     Ok(())
 }
 
@@ -4088,6 +4208,76 @@ impl ControllerBackend for IntelArcBackend {
 }
 
 #[derive(Clone, Debug)]
+enum IonicoCommand {
+    Mode {
+        mode: IonicoMode,
+        colors: Vec<Rgb8>,
+        brightness: u8,
+        speed: u8,
+    },
+    Save,
+}
+
+#[derive(Debug)]
+struct IonicoBackend {
+    model: IonicoModel,
+    output: HidOutput<IONICO_OUTPUT_REPORT_LEN>,
+}
+
+#[derive(Debug)]
+enum IonicoBackendError {
+    Settings(IonicoInvalidSettings),
+    Apply(IonicoApplyError<HidTransportError>),
+    Save(HidTransportError),
+}
+
+impl fmt::Display for IonicoBackendError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Settings(error) => write!(f, "invalid Ionico mode: {error}"),
+            Self::Apply(error) => write!(f, "could not apply Ionico mode: {error}"),
+            Self::Save(error) => write!(f, "could not persist Ionico state: {error}"),
+        }
+    }
+}
+
+impl Error for IonicoBackendError {}
+
+impl ControllerBackend for IonicoBackend {
+    type Barrier = IonicoCommand;
+    type Error = IonicoBackendError;
+
+    fn apply_whole_color(&mut self, color: Rgb8) -> Result<(), Self::Error> {
+        let colors = vec![color; self.model.led_count()];
+        IonicoModeTransaction::new(self.model, IonicoMode::Direct, &colors, 50, 0)
+            .map_err(IonicoBackendError::Settings)?
+            .apply(&mut self.output)
+            .map_err(IonicoBackendError::Apply)
+    }
+
+    fn apply_barrier(&mut self, command: Self::Barrier) -> Result<(), Self::Error> {
+        match command {
+            IonicoCommand::Mode {
+                mode,
+                colors,
+                brightness,
+                speed,
+            } => IonicoModeTransaction::new(self.model, mode, &colors, brightness, speed)
+                .map_err(IonicoBackendError::Settings)?
+                .apply(&mut self.output)
+                .map_err(IonicoBackendError::Apply),
+            IonicoCommand::Save => IonicoSaveTransaction::new()
+                .apply(&mut self.output)
+                .map_err(IonicoBackendError::Save),
+        }
+    }
+
+    fn shutdown(&mut self) -> Result<(), Self::Error> {
+        Ok(())
+    }
+}
+
+#[derive(Clone, Debug)]
 struct AnnePro2Command {
     colors: Vec<Rgb8>,
 }
@@ -4584,6 +4774,26 @@ fn parse_rgb(input: &str) -> Result<Rgb8, Box<dyn Error>> {
 
 fn parse_rgb_colors(inputs: &[String]) -> Result<Vec<Rgb8>, Box<dyn Error>> {
     inputs.iter().map(|input| parse_rgb(input)).collect()
+}
+
+fn parse_ionico_model(input: &str) -> Result<IonicoModel, Box<dyn Error>> {
+    match input {
+        "keyboard" => Ok(IonicoModel::Keyboard),
+        "front-bar" => Ok(IonicoModel::FrontBar),
+        _ => Err(format!("unknown Ionico model: {input}").into()),
+    }
+}
+
+fn parse_ionico_mode(input: &str) -> Result<IonicoMode, Box<dyn Error>> {
+    match input {
+        "direct" => Ok(IonicoMode::Direct),
+        "breathing" => Ok(IonicoMode::Breathing),
+        "wave" => Ok(IonicoMode::Wave),
+        "raindrops" => Ok(IonicoMode::Raindrops),
+        "flashing" => Ok(IonicoMode::Flashing),
+        "off" => Ok(IonicoMode::Off),
+        _ => Err(format!("unknown Ionico mode: {input}").into()),
+    }
 }
 
 fn parse_faustus_mode(input: &str) -> Result<FaustusMode, Box<dyn Error>> {

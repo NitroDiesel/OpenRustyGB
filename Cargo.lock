@@ -107,6 +107,7 @@ dependencies = [
  "openrustygb-driver-hyte-keeb-tkl",
  "openrustygb-driver-instant-mice",
  "openrustygb-driver-intel-arc-a770-le",
+ "openrustygb-driver-ionico",
  "openrustygb-driver-lego-dimensions-toypad",
  "openrustygb-driver-lexip-np93-alpha",
  "openrustygb-driver-luxafor-flag",
@@ -289,6 +290,14 @@ dependencies = [
 
 [[package]]
 name = "openrustygb-driver-intel-arc-a770-le"
+version = "0.0.1"
+dependencies = [
+ "openrustygb-domain",
+ "openrustygb-driver-api",
+]
+
+[[package]]
+name = "openrustygb-driver-ionico"
 version = "0.0.1"
 dependencies = [
  "openrustygb-domain",

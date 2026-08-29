@@ -554,3 +554,19 @@ matching device completes its live test.
 Physical Anne Pro 2 hardware was not present for this contraction. The family
 remains release-blocked by the global hardware-evidence policy until a matching
 device completes its live test.
+
+## IonicoController
+
+- Rust package: `openrustygb-driver-ionico`
+- Devices: Ionico Keyboard with 4 LEDs in one linear zone and Ionico Light Bar with 22 LEDs in one linear zone
+- Match: keyboard `048D:CE00` at usage `FF12:0001`; front bar `048D:6005` at usage `FF03:0001`; the native detectors do not constrain interface
+- Preserved modes: Direct, Breathing, Wave, and Off on both models; keyboard-only Flashing; front-bar-only Raindrops; brightness `0..50`, effect speed `0..10`, and seven mode-specific colors
+- Preserved feature output: mode command `08 02`, indexed color command `14`, Off command `09 02`, and manual BIOS save command `1A 00 01 04 00 00 00 01`
+- Preserved front-bar direct output: mode `33`, `12` start marker, one 65-byte RBG-ordered output, then the `12 00 01` finish marker
+- Safety correction: the final front-bar LED retains its actually transmitted red byte at report byte 64 while out-of-bounds blue/green writes are removed; all other bytes are deterministic and the 65-byte output must be accepted in full
+- Verification: exact page/usage matcher tests, keyboard Direct and effect goldens, front-bar mixed-report/RBG/final-byte golden, model-mode/color/range validation, Off/save goldens, short-write rejection, model descriptions, executable read-only probe, guarded reversible mode command, guarded persistent-save command, workspace Clippy and tests
+- Deleted native files: `IonicoControllerDetect.cpp`, `IonicoController.cpp`, `IonicoController.h`, `RGBController_Ionico.cpp`, `RGBController_Ionico.h`
+
+Physical Ionico hardware was not present for this contraction. The family
+remains release-blocked by the global hardware-evidence policy until a matching
+device completes its live test.
