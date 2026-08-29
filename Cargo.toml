@@ -43,6 +43,7 @@ members = [
     "crates/drivers/anne-pro-2",
     "crates/drivers/ionico",
     "crates/drivers/xpg-summoner",
+    "crates/drivers/ducky-keyboard",
     "crates/openrustygb-app",
     "xtask",
 ]

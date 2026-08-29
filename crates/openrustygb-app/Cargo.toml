@@ -16,6 +16,7 @@ openrustygb-domain = { path = "../openrustygb-domain" }
 openrustygb-driver-api = { path = "../openrustygb-driver-api" }
 openrustygb-driver-areson-mice = { path = "../drivers/areson-mice" }
 openrustygb-driver-dream-cheeky-webmail-notifier = { path = "../drivers/dream-cheeky-webmail-notifier" }
+openrustygb-driver-ducky-keyboard = { path = "../drivers/ducky-keyboard" }
 openrustygb-driver-dark-project-kd3b-v2 = { path = "../drivers/dark-project-kd3b-v2" }
 openrustygb-driver-elgato-stream-deck-mk2 = { path = "../drivers/elgato-stream-deck-mk2" }
 openrustygb-driver-ek-loop-connect = { path = "../drivers/ek-loop-connect" }

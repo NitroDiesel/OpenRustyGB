@@ -587,3 +587,20 @@ device completes its live test.
 Physical XPG Summoner hardware was not present for this contraction. The family
 remains release-blocked by the global hardware-evidence policy until a matching
 device completes its live test.
+
+## DuckyKeyboardController
+
+- Rust package: `openrustygb-driver-ducky-keyboard`
+- Devices: Ducky Shine 7 / Ducky One 2 RGB and Ducky One 2 RGB TKL
+- Match: VID `04D9`; full-size PID `0348` or TKL PID `0356`; interface `1`; the native detectors do not constrain usage page or usage
+- Preserved model: one full-size 132-position or TKL 108-position keyboard matrix zone, Direct per-LED color, mode value `FFFF`, and the original standardized key labels including unused positions
+- Preserved layouts: the original 6-by-23 full-size and 6-by-19 TKL matrix maps
+- Preserved lifecycle: exact 65-byte `00 41 01` direct-mode initialization with native 2 ms pacing when the endpoint is opened
+- Preserved output: initialize-color report, eight `00 56 83` data reports carrying 40 then seven 60-byte chunks, terminate report `00 51 28`, RGB order, and native 2 ms pacing after every report
+- Safety correction: model-specific color counts are required, all unused color-buffer bytes and packet fields are deterministically zero instead of transmitting native uninitialized stack data, and every 65-byte HID write must be accepted in full
+- Verification: both product/interface matchers, initialization and full transaction packet goldens, RGB fragmentation and zero-tail checks, invalid-count and short-write rejection, exact matrices/model metadata, executable read-only probe and guarded model-sized command, workspace Clippy and tests
+- Deleted native files: `DuckyKeyboardControllerDetect.cpp`, `DuckyKeyboardController.cpp`, `DuckyKeyboardController.h`, `RGBController_DuckyKeyboard.cpp`, `RGBController_DuckyKeyboard.h`
+
+Physical supported Ducky hardware was not present for this contraction. The
+family remains release-blocked by the global hardware-evidence policy until a
+matching device completes its live test.

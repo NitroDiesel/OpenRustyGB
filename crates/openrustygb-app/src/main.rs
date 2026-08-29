@@ -47,6 +47,11 @@ use openrustygb_driver_dream_cheeky_webmail_notifier::{
     DirectColorTransaction as DreamColorTransaction, Initialization as DreamInitialization,
     MATCH as DREAM_MATCH, OUTPUT_REPORT_LEN as DREAM_REPORT_LEN, matches as matches_dream,
 };
+use openrustygb_driver_ducky_keyboard::{
+    DirectColorTransaction as DuckyColorTransaction, DuckyModel,
+    Initialization as DuckyInitialization, InvalidColorCount as DuckyInvalidColorCount,
+    OUTPUT_REPORT_LEN as DUCKY_REPORT_LEN, match_model as match_ducky,
+};
 use openrustygb_driver_ek_loop_connect::{
     EkMode, InvalidSpeed as EkInvalidSpeed, MATCH as EK_MATCH,
     ModeTransaction as EkModeTransaction, OUTPUT_REPORT_LEN as EK_REPORT_LEN,
@@ -212,6 +217,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     print_anne_pro_2_usage();
     print_ionico_usage();
     print_xpg_summoner_usage();
+    print_ducky_usage();
     Ok(())
 }
 
@@ -227,6 +233,7 @@ fn dispatch_probe(args: &[String]) -> Option<Result<(), Box<dyn Error>>> {
         [command] if command == "probe-redragon" => Some(probe_redragon()),
         [command] if command == "probe-haste2" => Some(probe()),
         [command] if command == "probe-dream-cheeky" => Some(probe_dream()),
+        [command] if command == "probe-ducky" => Some(probe_ducky()),
         [command] if command == "probe-ek-loop-connect" => Some(probe_ek()),
         [command] if command == "probe-dark-project" => Some(probe_dark_project()),
         [command] if command == "probe-stream-deck" => Some(probe_stream_deck()),
@@ -1428,6 +1435,7 @@ fn dispatch_per_led_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
             | "set-hyte-keeb-tkl"
             | "set-intel-arc-a770-le"
             | "set-xpg-summoner"
+            | "set-ducky"
     ) {
         return Ok(false);
     }
@@ -1442,6 +1450,7 @@ fn dispatch_per_led_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
         "set-hyte-keeb-tkl" => set_hyte_colors(&colors)?,
         "set-intel-arc-a770-le" => set_intel_arc_colors(&colors)?,
         "set-xpg-summoner" => set_xpg_summoner_colors(&colors)?,
+        "set-ducky" => set_ducky_colors(&colors)?,
         _ => unreachable!("command was checked above"),
     }
     Ok(true)
@@ -1580,6 +1589,13 @@ fn print_xpg_summoner_usage() {
     );
 }
 
+fn print_ducky_usage() {
+    eprintln!(
+        "  openrustygb probe-ducky\n  \
+         openrustygb set-ducky --confirm-reversible-write <108-or-132-RRGGBB-colors>"
+    );
+}
+
 fn probe_msi() -> Result<(), Box<dyn Error>> {
     let endpoints = HidInventory::enumerate()?;
     let exact: Vec<_> = endpoints
@@ -1688,6 +1704,31 @@ fn probe_dream() -> Result<(), Box<dyn Error>> {
         for endpoint in exact {
             println!(
                 "Found Dream Cheeky Webmail Notifier endpoint: {:04X}:{:04X}, interface {}, usage {:04X}:{:04X}",
+                endpoint.vendor_id,
+                endpoint.product_id,
+                endpoint.interface_number,
+                endpoint.usage_page,
+                endpoint.usage
+            );
+        }
+    }
+    println!("Probe completed without opening a device or writing a report.");
+    Ok(())
+}
+
+fn probe_ducky() -> Result<(), Box<dyn Error>> {
+    let endpoints = HidInventory::enumerate()?;
+    let exact: Vec<_> = endpoints
+        .iter()
+        .filter_map(|endpoint| match_ducky(endpoint).map(|model| (endpoint, model)))
+        .collect();
+    if exact.is_empty() {
+        println!("No exact supported Ducky keyboard endpoint found.");
+    } else {
+        for (endpoint, model) in exact {
+            println!(
+                "Found {} endpoint: {:04X}:{:04X}, interface {}, usage {:04X}:{:04X}",
+                model.name(),
                 endpoint.vendor_id,
                 endpoint.product_id,
                 endpoint.interface_number,
@@ -2725,6 +2766,55 @@ fn set_xpg_summoner_colors(colors: &[Rgb8]) -> Result<(), Box<dyn Error>> {
         }
     }
     println!("Applied one reversible XPG Summoner per-LED transaction.");
+    Ok(())
+}
+
+fn set_ducky_colors(colors: &[Rgb8]) -> Result<(), Box<dyn Error>> {
+    if !matches!(colors.len(), 108 | 132) {
+        return Err(format!(
+            "Ducky keyboard requires 108 or 132 colors, got {}",
+            colors.len()
+        )
+        .into());
+    }
+    let endpoints = HidInventory::enumerate()?;
+    let mut exact = endpoints
+        .into_iter()
+        .filter_map(|endpoint| match_ducky(&endpoint).map(|model| (endpoint, model)));
+    let (endpoint, model) = exact
+        .next()
+        .ok_or("exact supported Ducky keyboard endpoint not found")?;
+    if exact.next().is_some() {
+        return Err("more than one supported Ducky endpoint found; refusing to choose".into());
+    }
+    DuckyColorTransaction::new(model, colors)?;
+    let output = HidOutput::<DUCKY_REPORT_LEN>::open_matching(&endpoint, model.matcher())?;
+    let backend = DuckyBackend::initialize(model, output)?;
+    let target = ControllerRef {
+        id: ControllerId::new(NonZeroU64::new(38).expect("thirty-eight is non-zero")),
+        incarnation: Incarnation::new(NonZeroU32::new(1).expect("one is non-zero")),
+    };
+    let actor = ControllerActor::start(target, backend, 4)?;
+    let outcome = actor
+        .submit_barrier(
+            target,
+            DuckyCommand {
+                colors: colors.to_vec(),
+            },
+        )?
+        .wait()?;
+    actor.shutdown()?;
+    match outcome {
+        CommandOutcome::Applied { .. } => {}
+        CommandOutcome::Failed { error, .. } => return Err(error.into()),
+        CommandOutcome::Superseded { .. } => {
+            return Err("Ducky color command was unexpectedly superseded".into());
+        }
+    }
+    println!(
+        "Applied one reversible {} per-LED transaction.",
+        model.name()
+    );
     Ok(())
 }
 
@@ -4465,6 +4555,68 @@ impl ControllerBackend for XpgSummonerBackend {
         XpgSummonerShutdown::new()
             .apply(&mut self.output)
             .map_err(XpgSummonerBackendError::Output)
+    }
+}
+
+#[derive(Clone, Debug)]
+struct DuckyCommand {
+    colors: Vec<Rgb8>,
+}
+
+#[derive(Debug)]
+struct DuckyBackend {
+    model: DuckyModel,
+    output: HidOutput<DUCKY_REPORT_LEN>,
+}
+
+impl DuckyBackend {
+    fn initialize(
+        model: DuckyModel,
+        mut output: HidOutput<DUCKY_REPORT_LEN>,
+    ) -> Result<Self, ExactWriteError<HidTransportError>> {
+        DuckyInitialization::new().apply(&mut output)?;
+        Ok(Self { model, output })
+    }
+}
+
+#[derive(Debug)]
+enum DuckyBackendError {
+    Settings(DuckyInvalidColorCount),
+    Output(ExactWriteError<HidTransportError>),
+}
+
+impl fmt::Display for DuckyBackendError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Settings(error) => write!(f, "invalid Ducky colors: {error}"),
+            Self::Output(error) => write!(f, "could not communicate with Ducky keyboard: {error}"),
+        }
+    }
+}
+
+impl Error for DuckyBackendError {}
+
+impl ControllerBackend for DuckyBackend {
+    type Barrier = DuckyCommand;
+    type Error = DuckyBackendError;
+
+    fn apply_whole_color(&mut self, color: Rgb8) -> Result<(), Self::Error> {
+        let colors = vec![color; self.model.led_count()];
+        DuckyColorTransaction::new(self.model, &colors)
+            .map_err(DuckyBackendError::Settings)?
+            .apply(&mut self.output)
+            .map_err(DuckyBackendError::Output)
+    }
+
+    fn apply_barrier(&mut self, command: Self::Barrier) -> Result<(), Self::Error> {
+        DuckyColorTransaction::new(self.model, &command.colors)
+            .map_err(DuckyBackendError::Settings)?
+            .apply(&mut self.output)
+            .map_err(DuckyBackendError::Output)
+    }
+
+    fn shutdown(&mut self) -> Result<(), Self::Error> {
+        Ok(())
     }
 }
 

@@ -95,6 +95,7 @@ dependencies = [
  "openrustygb-driver-clevo-lightbar",
  "openrustygb-driver-dark-project-kd3b-v2",
  "openrustygb-driver-dream-cheeky-webmail-notifier",
+ "openrustygb-driver-ducky-keyboard",
  "openrustygb-driver-ek-loop-connect",
  "openrustygb-driver-elgato-stream-deck-mk2",
  "openrustygb-driver-faustus-keyboard",
@@ -195,6 +196,14 @@ dependencies = [
 
 [[package]]
 name = "openrustygb-driver-dream-cheeky-webmail-notifier"
+version = "0.0.1"
+dependencies = [
+ "openrustygb-domain",
+ "openrustygb-driver-api",
+]
+
+[[package]]
+name = "openrustygb-driver-ducky-keyboard"
 version = "0.0.1"
 dependencies = [
  "openrustygb-domain",
