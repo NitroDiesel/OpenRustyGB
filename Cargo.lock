@@ -124,6 +124,7 @@ dependencies = [
  "openrustygb-driver-tecknet-m008",
  "openrustygb-driver-thingm-blink1-mk2",
  "openrustygb-driver-wushi-l50",
+ "openrustygb-driver-xpg-summoner",
  "openrustygb-runtime",
  "openrustygb-transport-hid",
 ]
@@ -426,6 +427,14 @@ dependencies = [
 
 [[package]]
 name = "openrustygb-driver-wushi-l50"
+version = "0.0.1"
+dependencies = [
+ "openrustygb-domain",
+ "openrustygb-driver-api",
+]
+
+[[package]]
+name = "openrustygb-driver-xpg-summoner"
 version = "0.0.1"
 dependencies = [
  "openrustygb-domain",

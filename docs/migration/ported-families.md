@@ -570,3 +570,20 @@ device completes its live test.
 Physical Ionico hardware was not present for this contraction. The family
 remains release-blocked by the global hardware-evidence policy until a matching
 device completes its live test.
+
+## XPGSummonerKeyboardController
+
+- Rust package: `openrustygb-driver-xpg-summoner`
+- Device: XPG Summoner Gaming Keyboard
+- Match: VID `125F`, PID `9418`, interface `2`, usage `FF01:0001`
+- Preserved model: one 104-key ANSI full-size matrix zone and Direct per-LED color
+- Preserved layout: the original 6-by-21 matrix, 104 logical key names, and all 126 physical protocol positions, including the 22 non-key gaps
+- Preserved lifecycle: exact 265-byte `07 EA` initialization when opened and terminate-color report on shutdown, each followed by the native 2 ms delay
+- Preserved output: fixed brightness `100`, RGB channel order, 504-byte four-byte-per-position frame, and two `07 A3 08` output reports carrying 256 then 248 frame bytes with native 2 ms pacing
+- Safety correction: callers must provide exactly 104 colors, all unused protocol positions and report tails are deterministically zero, and every 265-byte HID write must be accepted in full
+- Verification: exact endpoint matcher tests, lifecycle and packet-fragment goldens, logical-to-protocol slot checks, invalid-count and short-write rejection, matrix/model tests, executable read-only probe and guarded 104-color command, workspace Clippy and tests
+- Deleted native files: `XPGSummonerControllerDetect.cpp`, `XPGSummonerController.cpp`, `XPGSummonerController.h`, `RGBController_XPGSummoner.cpp`, `RGBController_XPGSummoner.h`
+
+Physical XPG Summoner hardware was not present for this contraction. The family
+remains release-blocked by the global hardware-evidence policy until a matching
+device completes its live test.

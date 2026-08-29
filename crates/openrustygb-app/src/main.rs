@@ -189,6 +189,13 @@ use openrustygb_driver_wushi_l50::{
     LED_COUNT as WUSHI_LED_COUNT, MATCH as WUSHI_MATCH, ModeTransaction as WushiModeTransaction,
     REPORT_LEN as WUSHI_REPORT_LEN, WushiMode, matches as matches_wushi,
 };
+use openrustygb_driver_xpg_summoner::{
+    DirectColorTransaction as XpgSummonerColorTransaction,
+    Initialization as XpgSummonerInitialization, InvalidColorCount as XpgSummonerInvalidColorCount,
+    LED_COUNT as XPG_SUMMONER_LED_COUNT, MATCH as XPG_SUMMONER_MATCH,
+    OUTPUT_REPORT_LEN as XPG_SUMMONER_REPORT_LEN, Shutdown as XpgSummonerShutdown,
+    matches as matches_xpg_summoner,
+};
 use openrustygb_runtime::{CommandOutcome, ControllerActor, ControllerBackend};
 use openrustygb_transport_hid::{HidInventory, HidOutput, HidTransportError};
 
@@ -204,6 +211,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     print_skyloong_usage();
     print_anne_pro_2_usage();
     print_ionico_usage();
+    print_xpg_summoner_usage();
     Ok(())
 }
 
@@ -235,6 +243,7 @@ fn dispatch_probe(args: &[String]) -> Option<Result<(), Box<dyn Error>>> {
         [command] if command == "probe-hyperx-mousemat" => Some(probe_hyperx_mousemat()),
         [command] if command == "probe-instant-mouse" => Some(probe_instant_mouse()),
         [command] if command == "probe-ionico" => Some(probe_ionico()),
+        [command] if command == "probe-xpg-summoner" => Some(probe_xpg_summoner()),
         [command] if command == "probe-lego-toypad" => Some(probe_lego()),
         [command] if command == "probe-luxafor" => Some(probe_luxafor()),
         [command] if command == "probe-lexip" => Some(probe_lexip()),
@@ -753,6 +762,30 @@ fn probe_ionico() -> Result<(), Box<dyn Error>> {
             println!(
                 "Found {} endpoint: {:04X}:{:04X}, interface {}, usage {:04X}:{:04X}",
                 model.name(),
+                endpoint.vendor_id,
+                endpoint.product_id,
+                endpoint.interface_number,
+                endpoint.usage_page,
+                endpoint.usage
+            );
+        }
+    }
+    println!("Probe completed without opening a device or writing a report.");
+    Ok(())
+}
+
+fn probe_xpg_summoner() -> Result<(), Box<dyn Error>> {
+    let endpoints = HidInventory::enumerate()?;
+    let exact: Vec<_> = endpoints
+        .iter()
+        .filter(|endpoint| matches_xpg_summoner(endpoint))
+        .collect();
+    if exact.is_empty() {
+        println!("No exact XPG Summoner lighting endpoint found.");
+    } else {
+        for endpoint in exact {
+            println!(
+                "Found XPG Summoner endpoint: {:04X}:{:04X}, interface {}, usage {:04X}:{:04X}",
                 endpoint.vendor_id,
                 endpoint.product_id,
                 endpoint.interface_number,
@@ -1394,6 +1427,7 @@ fn dispatch_per_led_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
             | "set-skydimo"
             | "set-hyte-keeb-tkl"
             | "set-intel-arc-a770-le"
+            | "set-xpg-summoner"
     ) {
         return Ok(false);
     }
@@ -1407,6 +1441,7 @@ fn dispatch_per_led_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
         "set-skydimo" => set_skydimo_colors(colors)?,
         "set-hyte-keeb-tkl" => set_hyte_colors(&colors)?,
         "set-intel-arc-a770-le" => set_intel_arc_colors(&colors)?,
+        "set-xpg-summoner" => set_xpg_summoner_colors(&colors)?,
         _ => unreachable!("command was checked above"),
     }
     Ok(true)
@@ -1535,6 +1570,13 @@ fn print_ionico_usage() {
          openrustygb set-ionico --confirm-reversible-write <keyboard|front-bar> \
          <direct|breathing|wave|raindrops|flashing|off> <brightness-0-50> <speed-0-10> <RRGGBB...>\n  \
          openrustygb save-ionico --confirm-persistent-write <keyboard|front-bar>"
+    );
+}
+
+fn print_xpg_summoner_usage() {
+    eprintln!(
+        "  openrustygb probe-xpg-summoner\n  \
+         openrustygb set-xpg-summoner --confirm-reversible-write <104-RRGGBB-colors>"
     );
 }
 
@@ -2645,6 +2687,44 @@ fn set_ionico(model: IonicoModel, command: IonicoCommand) -> Result<(), Box<dyn 
     } else {
         println!("Applied one reversible Ionico mode transaction.");
     }
+    Ok(())
+}
+
+fn set_xpg_summoner_colors(colors: &[Rgb8]) -> Result<(), Box<dyn Error>> {
+    XpgSummonerColorTransaction::new(colors)?;
+    let endpoints = HidInventory::enumerate()?;
+    let mut exact = endpoints.into_iter().filter(matches_xpg_summoner);
+    let endpoint = exact
+        .next()
+        .ok_or("exact XPG Summoner lighting endpoint not found")?;
+    if exact.next().is_some() {
+        return Err("more than one XPG Summoner endpoint found; refusing to choose".into());
+    }
+    let output =
+        HidOutput::<XPG_SUMMONER_REPORT_LEN>::open_matching(&endpoint, XPG_SUMMONER_MATCH)?;
+    let backend = XpgSummonerBackend::initialize(output)?;
+    let target = ControllerRef {
+        id: ControllerId::new(NonZeroU64::new(37).expect("thirty-seven is non-zero")),
+        incarnation: Incarnation::new(NonZeroU32::new(1).expect("one is non-zero")),
+    };
+    let actor = ControllerActor::start(target, backend, 4)?;
+    let outcome = actor
+        .submit_barrier(
+            target,
+            XpgSummonerCommand {
+                colors: colors.to_vec(),
+            },
+        )?
+        .wait()?;
+    actor.shutdown()?;
+    match outcome {
+        CommandOutcome::Applied { .. } => {}
+        CommandOutcome::Failed { error, .. } => return Err(error.into()),
+        CommandOutcome::Superseded { .. } => {
+            return Err("XPG Summoner color command was unexpectedly superseded".into());
+        }
+    }
+    println!("Applied one reversible XPG Summoner per-LED transaction.");
     Ok(())
 }
 
@@ -4324,6 +4404,67 @@ impl ControllerBackend for AnnePro2Backend {
 
     fn shutdown(&mut self) -> Result<(), Self::Error> {
         Ok(())
+    }
+}
+
+#[derive(Clone, Debug)]
+struct XpgSummonerCommand {
+    colors: Vec<Rgb8>,
+}
+
+#[derive(Debug)]
+struct XpgSummonerBackend {
+    output: HidOutput<XPG_SUMMONER_REPORT_LEN>,
+}
+
+impl XpgSummonerBackend {
+    fn initialize(
+        mut output: HidOutput<XPG_SUMMONER_REPORT_LEN>,
+    ) -> Result<Self, ExactWriteError<HidTransportError>> {
+        XpgSummonerInitialization::new().apply(&mut output)?;
+        Ok(Self { output })
+    }
+}
+
+#[derive(Debug)]
+enum XpgSummonerBackendError {
+    Settings(XpgSummonerInvalidColorCount),
+    Output(ExactWriteError<HidTransportError>),
+}
+
+impl fmt::Display for XpgSummonerBackendError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Settings(error) => write!(f, "invalid XPG Summoner colors: {error}"),
+            Self::Output(error) => write!(f, "could not communicate with XPG Summoner: {error}"),
+        }
+    }
+}
+
+impl Error for XpgSummonerBackendError {}
+
+impl ControllerBackend for XpgSummonerBackend {
+    type Barrier = XpgSummonerCommand;
+    type Error = XpgSummonerBackendError;
+
+    fn apply_whole_color(&mut self, color: Rgb8) -> Result<(), Self::Error> {
+        XpgSummonerColorTransaction::new(&[color; XPG_SUMMONER_LED_COUNT])
+            .map_err(XpgSummonerBackendError::Settings)?
+            .apply(&mut self.output)
+            .map_err(XpgSummonerBackendError::Output)
+    }
+
+    fn apply_barrier(&mut self, command: Self::Barrier) -> Result<(), Self::Error> {
+        XpgSummonerColorTransaction::new(&command.colors)
+            .map_err(XpgSummonerBackendError::Settings)?
+            .apply(&mut self.output)
+            .map_err(XpgSummonerBackendError::Output)
+    }
+
+    fn shutdown(&mut self) -> Result<(), Self::Error> {
+        XpgSummonerShutdown::new()
+            .apply(&mut self.output)
+            .map_err(XpgSummonerBackendError::Output)
     }
 }
 

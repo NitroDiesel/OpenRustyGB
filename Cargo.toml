@@ -42,6 +42,7 @@ members = [
     "crates/drivers/skyloong-gk104-pro",
     "crates/drivers/anne-pro-2",
     "crates/drivers/ionico",
+    "crates/drivers/xpg-summoner",
     "crates/openrustygb-app",
     "xtask",
 ]
