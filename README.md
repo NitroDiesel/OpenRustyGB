@@ -25,7 +25,8 @@ Objective-C, headers, Qt, CMake, or qmake files remain.
 See [PRODUCT.md](PRODUCT.md),
 [the accepted architecture](docs/architecture/ARCHITECTURE.md), and
 [the architecture comparison](docs/architecture/arena-synthesis.md) for the
-current contract and status.
+current contract. Cloud agents should begin with
+[the project context](docs/PROJECT_CONTEXT.md).
 
 ## Upstream OpenRGB reference
 
