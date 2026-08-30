@@ -185,6 +185,13 @@ use openrustygb_driver_tecknet_m008::{
     MATCH as TECKNET_MATCH, ModeColorTransaction as TecknetTransaction, TecknetMode,
     matches as matches_tecknet,
 };
+use openrustygb_driver_thermaltake_poseidon_z_rgb::{
+    DirectColorTransaction as PoseidonDirectTransaction, Direction as PoseidonDirection,
+    FEATURE_REPORT_LEN as POSEIDON_REPORT_LEN, InvalidSettings as PoseidonInvalidSettings,
+    LED_COUNT as POSEIDON_LED_COUNT, MATCH as POSEIDON_MATCH,
+    ModeTransaction as PoseidonModeTransaction, PoseidonMode,
+    ProfileColorTransaction as PoseidonProfileTransaction, matches as matches_poseidon,
+};
 use openrustygb_driver_thingm_blink1_mk2::{
     BlinkMode, FEATURE_REPORT_LEN as THINGM_REPORT_LEN, MATCH as THINGM_MATCH,
     ModeTransaction as ThingMModeTransaction, matches as matches_thingm,
@@ -218,6 +225,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     print_ionico_usage();
     print_xpg_summoner_usage();
     print_ducky_usage();
+    print_poseidon_usage();
     Ok(())
 }
 
@@ -234,6 +242,7 @@ fn dispatch_probe(args: &[String]) -> Option<Result<(), Box<dyn Error>>> {
         [command] if command == "probe-haste2" => Some(probe()),
         [command] if command == "probe-dream-cheeky" => Some(probe_dream()),
         [command] if command == "probe-ducky" => Some(probe_ducky()),
+        [command] if command == "probe-poseidon-z-rgb" => Some(probe_poseidon()),
         [command] if command == "probe-ek-loop-connect" => Some(probe_ek()),
         [command] if command == "probe-dark-project" => Some(probe_dark_project()),
         [command] if command == "probe-stream-deck" => Some(probe_stream_deck()),
@@ -1012,6 +1021,9 @@ fn dispatch_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
 }
 
 fn dispatch_structured_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
+    if dispatch_poseidon_write(args)? {
+        return Ok(true);
+    }
     if dispatch_ionico_write(args)? {
         return Ok(true);
     }
@@ -1055,6 +1067,32 @@ fn dispatch_structured_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
         return Ok(true);
     }
     Ok(false)
+}
+
+fn dispatch_poseidon_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
+    match args {
+        [command, confirmation, colors @ ..]
+            if command == "set-poseidon-direct" && confirmation == "--confirm-reversible-write" =>
+        {
+            set_poseidon(PoseidonCommand::Direct {
+                colors: parse_rgb_colors(colors)?,
+            })?;
+            Ok(true)
+        }
+        [command, confirmation, mode, direction, speed, colors @ ..]
+            if command == "set-poseidon-profile"
+                && confirmation == "--confirm-persistent-write" =>
+        {
+            set_poseidon(PoseidonCommand::Profile {
+                mode: parse_poseidon_mode(mode)?,
+                direction: parse_poseidon_direction(direction)?,
+                speed: parse_u8_decimal(speed, "speed")?,
+                colors: parse_rgb_colors(colors)?,
+            })?;
+            Ok(true)
+        }
+        _ => Ok(false),
+    }
 }
 
 fn dispatch_ionico_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
@@ -1596,6 +1634,15 @@ fn print_ducky_usage() {
     );
 }
 
+fn print_poseidon_usage() {
+    eprintln!(
+        "  openrustygb probe-poseidon-z-rgb\n  \
+         openrustygb set-poseidon-direct --confirm-reversible-write <104-RRGGBB-colors>\n  \
+         openrustygb set-poseidon-profile --confirm-persistent-write \
+         <static|wave|ripple|reactive> <left|right> <speed-5-16> <104-RRGGBB-colors>"
+    );
+}
+
 fn probe_msi() -> Result<(), Box<dyn Error>> {
     let endpoints = HidInventory::enumerate()?;
     let exact: Vec<_> = endpoints
@@ -1729,6 +1776,30 @@ fn probe_ducky() -> Result<(), Box<dyn Error>> {
             println!(
                 "Found {} endpoint: {:04X}:{:04X}, interface {}, usage {:04X}:{:04X}",
                 model.name(),
+                endpoint.vendor_id,
+                endpoint.product_id,
+                endpoint.interface_number,
+                endpoint.usage_page,
+                endpoint.usage
+            );
+        }
+    }
+    println!("Probe completed without opening a device or writing a report.");
+    Ok(())
+}
+
+fn probe_poseidon() -> Result<(), Box<dyn Error>> {
+    let endpoints = HidInventory::enumerate()?;
+    let exact: Vec<_> = endpoints
+        .iter()
+        .filter(|endpoint| matches_poseidon(endpoint))
+        .collect();
+    if exact.is_empty() {
+        println!("No exact Thermaltake Poseidon Z RGB endpoint found.");
+    } else {
+        for endpoint in exact {
+            println!(
+                "Found Thermaltake Poseidon Z RGB endpoint: {:04X}:{:04X}, interface {}, usage {:04X}:{:04X}",
                 endpoint.vendor_id,
                 endpoint.product_id,
                 endpoint.interface_number,
@@ -2815,6 +2886,53 @@ fn set_ducky_colors(colors: &[Rgb8]) -> Result<(), Box<dyn Error>> {
         "Applied one reversible {} per-LED transaction.",
         model.name()
     );
+    Ok(())
+}
+
+fn set_poseidon(command: PoseidonCommand) -> Result<(), Box<dyn Error>> {
+    match &command {
+        PoseidonCommand::Direct { colors } => {
+            PoseidonDirectTransaction::new(colors)?;
+        }
+        PoseidonCommand::Profile {
+            mode,
+            direction,
+            speed,
+            colors,
+        } => {
+            PoseidonModeTransaction::new(*mode, *direction, *speed)?;
+            PoseidonProfileTransaction::new(*mode, *direction, *speed, colors)?;
+        }
+    }
+    let endpoints = HidInventory::enumerate()?;
+    let mut exact = endpoints.into_iter().filter(matches_poseidon);
+    let endpoint = exact
+        .next()
+        .ok_or("exact Thermaltake Poseidon Z RGB endpoint not found")?;
+    if exact.next().is_some() {
+        return Err("more than one Poseidon Z RGB endpoint found; refusing to choose".into());
+    }
+    let output = HidOutput::<POSEIDON_REPORT_LEN>::open_matching(&endpoint, POSEIDON_MATCH)?;
+    let persistent = matches!(command, PoseidonCommand::Profile { .. });
+    let target = ControllerRef {
+        id: ControllerId::new(NonZeroU64::new(39).expect("thirty-nine is non-zero")),
+        incarnation: Incarnation::new(NonZeroU32::new(1).expect("one is non-zero")),
+    };
+    let actor = ControllerActor::start(target, PoseidonBackend { output }, 4)?;
+    let outcome = actor.submit_barrier(target, command)?.wait()?;
+    actor.shutdown()?;
+    match outcome {
+        CommandOutcome::Applied { .. } => {}
+        CommandOutcome::Failed { error, .. } => return Err(error.into()),
+        CommandOutcome::Superseded { .. } => {
+            return Err("Poseidon Z RGB command was unexpectedly superseded".into());
+        }
+    }
+    if persistent {
+        println!("Applied and saved one Thermaltake Poseidon Z RGB profile transaction.");
+    } else {
+        println!("Applied one reversible Thermaltake Poseidon Z RGB direct transaction.");
+    }
     Ok(())
 }
 
@@ -4621,6 +4739,81 @@ impl ControllerBackend for DuckyBackend {
 }
 
 #[derive(Clone, Debug)]
+enum PoseidonCommand {
+    Direct {
+        colors: Vec<Rgb8>,
+    },
+    Profile {
+        mode: PoseidonMode,
+        direction: PoseidonDirection,
+        speed: u8,
+        colors: Vec<Rgb8>,
+    },
+}
+
+#[derive(Debug)]
+struct PoseidonBackend {
+    output: HidOutput<POSEIDON_REPORT_LEN>,
+}
+
+#[derive(Debug)]
+enum PoseidonBackendError {
+    Settings(PoseidonInvalidSettings),
+    Output(HidTransportError),
+}
+
+impl fmt::Display for PoseidonBackendError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Settings(error) => write!(f, "invalid Poseidon Z RGB settings: {error}"),
+            Self::Output(error) => write!(f, "could not communicate with Poseidon Z RGB: {error}"),
+        }
+    }
+}
+
+impl Error for PoseidonBackendError {}
+
+impl ControllerBackend for PoseidonBackend {
+    type Barrier = PoseidonCommand;
+    type Error = PoseidonBackendError;
+
+    fn apply_whole_color(&mut self, color: Rgb8) -> Result<(), Self::Error> {
+        PoseidonDirectTransaction::new(&[color; POSEIDON_LED_COUNT])
+            .map_err(PoseidonBackendError::Settings)?
+            .apply(&mut self.output)
+            .map_err(PoseidonBackendError::Output)
+    }
+
+    fn apply_barrier(&mut self, command: Self::Barrier) -> Result<(), Self::Error> {
+        match command {
+            PoseidonCommand::Direct { colors } => PoseidonDirectTransaction::new(&colors)
+                .map_err(PoseidonBackendError::Settings)?
+                .apply(&mut self.output)
+                .map_err(PoseidonBackendError::Output),
+            PoseidonCommand::Profile {
+                mode,
+                direction,
+                speed,
+                colors,
+            } => {
+                PoseidonModeTransaction::new(mode, direction, speed)
+                    .map_err(PoseidonBackendError::Settings)?
+                    .apply(&mut self.output)
+                    .map_err(PoseidonBackendError::Output)?;
+                PoseidonProfileTransaction::new(mode, direction, speed, &colors)
+                    .map_err(PoseidonBackendError::Settings)?
+                    .apply(&mut self.output)
+                    .map_err(PoseidonBackendError::Output)
+            }
+        }
+    }
+
+    fn shutdown(&mut self) -> Result<(), Self::Error> {
+        Ok(())
+    }
+}
+
+#[derive(Clone, Debug)]
 struct SkyloongCommand {
     brightness: u8,
     colors: Vec<Rgb8>,
@@ -5106,6 +5299,24 @@ fn parse_n5312_mode(input: &str) -> Result<N5312Mode, Box<dyn Error>> {
         "single-breath" => Ok(N5312Mode::SingleBreath),
         "off" => Ok(N5312Mode::Off),
         _ => Err("N5312A mode must be direct, breathing, single-breath, or off".into()),
+    }
+}
+
+fn parse_poseidon_mode(input: &str) -> Result<PoseidonMode, Box<dyn Error>> {
+    match input {
+        "static" => Ok(PoseidonMode::Static),
+        "wave" => Ok(PoseidonMode::Wave),
+        "ripple" => Ok(PoseidonMode::Ripple),
+        "reactive" => Ok(PoseidonMode::Reactive),
+        _ => Err("Poseidon Z RGB mode must be static, wave, ripple, or reactive".into()),
+    }
+}
+
+fn parse_poseidon_direction(input: &str) -> Result<PoseidonDirection, Box<dyn Error>> {
+    match input {
+        "left" => Ok(PoseidonDirection::Left),
+        "right" => Ok(PoseidonDirection::Right),
+        _ => Err("Poseidon Z RGB direction must be left or right".into()),
     }
 }
 

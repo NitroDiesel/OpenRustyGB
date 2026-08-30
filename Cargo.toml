@@ -44,6 +44,7 @@ members = [
     "crates/drivers/ionico",
     "crates/drivers/xpg-summoner",
     "crates/drivers/ducky-keyboard",
+    "crates/drivers/thermaltake-poseidon-z-rgb",
     "crates/openrustygb-app",
     "xtask",
 ]

@@ -604,3 +604,21 @@ device completes its live test.
 Physical supported Ducky hardware was not present for this contraction. The
 family remains release-blocked by the global hardware-evidence policy until a
 matching device completes its live test.
+
+## ThermaltakePoseidonZRGBController
+
+- Rust package: `openrustygb-driver-thermaltake-poseidon-z-rgb`
+- Device: Thermaltake Poseidon Z RGB keyboard
+- Match: VID `264A`, PID `3006`, interface `1`, usage page `FF01`; the native detector does not constrain usage
+- Preserved model: one 104-key matrix zone; Direct, Static, Wave, Ripple, and Reactive modes; Wave speed `5..16` and left/right direction
+- Preserved layout: the original 6-by-23 matrix, standardized key labels, and 104 sparse protocol offsets
+- Preserved Direct output: separate 264-byte red/green and blue feature reports, profile `1`, RGB channel placement, and the native 5 ms inter-report delay
+- Preserved profile output: effect control report, native 200 ms settling delay, red/green/blue profile reports with 10 ms pacing, then final control reapply
+- Preserved persistence boundary: Static and hardware-effect profile writes require `--confirm-persistent-write`; Direct uses the reversible-write guard
+- Safety correction: commands require exactly 104 colors, reject invalid Wave speeds, normalize settings unused by other modes to upstream defaults, and zero every unused report byte
+- Verification: exact endpoint matcher, Direct channel/offset goldens, profile channel/control/range goldens, normalization and invalid-count tests, exact matrix/model metadata, executable read-only probe, guarded reversible and persistent commands, workspace Clippy and tests
+- Deleted native files: `ThermaltakePoseidonZRGBControllerDetect.cpp`, `ThermaltakePoseidonZRGBController.cpp`, `ThermaltakePoseidonZRGBController.h`, `RGBController_ThermaltakePoseidonZRGB.cpp`, `RGBController_ThermaltakePoseidonZRGB.h`
+
+Physical Thermaltake Poseidon Z RGB hardware was not present for this
+contraction. The family remains release-blocked by the global hardware-evidence
+policy until a matching device completes its live test.

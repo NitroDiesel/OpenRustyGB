@@ -46,6 +46,7 @@ openrustygb-driver-sayodevice-e1 = { path = "../drivers/sayodevice-e1" }
 openrustygb-driver-skydimo-sk0902 = { path = "../drivers/skydimo-sk0902" }
 openrustygb-driver-thingm-blink1-mk2 = { path = "../drivers/thingm-blink1-mk2" }
 openrustygb-driver-tecknet-m008 = { path = "../drivers/tecknet-m008" }
+openrustygb-driver-thermaltake-poseidon-z-rgb = { path = "../drivers/thermaltake-poseidon-z-rgb" }
 openrustygb-driver-wushi-l50 = { path = "../drivers/wushi-l50" }
 openrustygb-driver-xpg-summoner = { path = "../drivers/xpg-summoner" }
 openrustygb-runtime = { path = "../openrustygb-runtime" }

@@ -123,6 +123,7 @@ dependencies = [
  "openrustygb-driver-skydimo-sk0902",
  "openrustygb-driver-skyloong-gk104-pro",
  "openrustygb-driver-tecknet-m008",
+ "openrustygb-driver-thermaltake-poseidon-z-rgb",
  "openrustygb-driver-thingm-blink1-mk2",
  "openrustygb-driver-wushi-l50",
  "openrustygb-driver-xpg-summoner",
@@ -420,6 +421,14 @@ dependencies = [
 
 [[package]]
 name = "openrustygb-driver-tecknet-m008"
+version = "0.0.1"
+dependencies = [
+ "openrustygb-domain",
+ "openrustygb-driver-api",
+]
+
+[[package]]
+name = "openrustygb-driver-thermaltake-poseidon-z-rgb"
 version = "0.0.1"
 dependencies = [
  "openrustygb-domain",
