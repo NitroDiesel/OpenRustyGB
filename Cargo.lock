@@ -118,6 +118,7 @@ dependencies = [
  "openrustygb-driver-nvidia-esa-xps-730x",
  "openrustygb-driver-nzxt-lift-mouse",
  "openrustygb-driver-patriot-viper-v550",
+ "openrustygb-driver-red-square-keyrox",
  "openrustygb-driver-redragon-mice",
  "openrustygb-driver-sayodevice-e1",
  "openrustygb-driver-skydimo-sk0902",
@@ -381,6 +382,14 @@ dependencies = [
 
 [[package]]
 name = "openrustygb-driver-patriot-viper-v550"
+version = "0.0.1"
+dependencies = [
+ "openrustygb-domain",
+ "openrustygb-driver-api",
+]
+
+[[package]]
+name = "openrustygb-driver-red-square-keyrox"
 version = "0.0.1"
 dependencies = [
  "openrustygb-domain",

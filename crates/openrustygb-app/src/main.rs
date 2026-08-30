@@ -160,6 +160,13 @@ use openrustygb_driver_patriot_viper_v550::{
     MATCH as VIPER_MATCH, PerLedColorTransaction as ViperColorTransaction,
     matches as matches_viper,
 };
+use openrustygb_driver_red_square_keyrox::{
+    CustomColorTransaction as KeyroxCustomTransaction, Direction as KeyroxDirection,
+    FEATURE_REPORT_LEN as KEYROX_REPORT_LEN, HardwareModeTransaction as KeyroxModeTransaction,
+    InvalidSettings as KeyroxInvalidSettings, KeyroxMode, LED_COUNT as KEYROX_LED_COUNT,
+    MATCH_TKL as KEYROX_TKL_MATCH, MATCH_TKL_V2 as KEYROX_TKL_V2_MATCH,
+    ModeColor as KeyroxModeColor, match_model as match_keyrox,
+};
 use openrustygb_driver_redragon_mice::{
     FEATURE_REPORT_LEN as REDRAGON_REPORT_LEN, Initialization as RedragonInitialization,
     ModeTransaction as RedragonModeTransaction, RedragonMode, match_model as match_redragon,
@@ -226,6 +233,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     print_xpg_summoner_usage();
     print_ducky_usage();
     print_poseidon_usage();
+    print_keyrox_usage();
     Ok(())
 }
 
@@ -243,6 +251,7 @@ fn dispatch_probe(args: &[String]) -> Option<Result<(), Box<dyn Error>>> {
         [command] if command == "probe-dream-cheeky" => Some(probe_dream()),
         [command] if command == "probe-ducky" => Some(probe_ducky()),
         [command] if command == "probe-poseidon-z-rgb" => Some(probe_poseidon()),
+        [command] if command == "probe-keyrox" => Some(probe_keyrox()),
         [command] if command == "probe-ek-loop-connect" => Some(probe_ek()),
         [command] if command == "probe-dark-project" => Some(probe_dark_project()),
         [command] if command == "probe-stream-deck" => Some(probe_stream_deck()),
@@ -1021,6 +1030,9 @@ fn dispatch_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
 }
 
 fn dispatch_structured_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
+    if dispatch_keyrox_write(args)? {
+        return Ok(true);
+    }
     if dispatch_poseidon_write(args)? {
         return Ok(true);
     }
@@ -1067,6 +1079,39 @@ fn dispatch_structured_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
         return Ok(true);
     }
     Ok(false)
+}
+
+fn dispatch_keyrox_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
+    match args {
+        [command, confirmation, brightness, colors @ ..]
+            if command == "set-keyrox-custom" && confirmation == "--confirm-reversible-write" =>
+        {
+            set_keyrox(KeyroxCommand::Custom {
+                brightness: parse_u8_decimal(brightness, "brightness")?,
+                colors: parse_rgb_colors(colors)?,
+            })?;
+            Ok(true)
+        }
+        [
+            command,
+            confirmation,
+            mode,
+            brightness,
+            speed,
+            direction,
+            color,
+        ] if command == "set-keyrox-mode" && confirmation == "--confirm-persistent-write" => {
+            set_keyrox(KeyroxCommand::HardwareMode {
+                mode: parse_keyrox_mode(mode)?,
+                brightness: parse_u8_decimal(brightness, "brightness")?,
+                speed: parse_u8_decimal(speed, "speed")?,
+                direction: parse_keyrox_direction(direction)?,
+                color: parse_keyrox_color(color)?,
+            })?;
+            Ok(true)
+        }
+        _ => Ok(false),
+    }
 }
 
 fn dispatch_poseidon_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
@@ -1643,6 +1688,17 @@ fn print_poseidon_usage() {
     );
 }
 
+fn print_keyrox_usage() {
+    eprintln!(
+        "  openrustygb probe-keyrox\n  \
+         openrustygb set-keyrox-custom --confirm-reversible-write \
+         <brightness-0-255> <87-RRGGBB-colors>\n  \
+         openrustygb set-keyrox-mode --confirm-persistent-write \
+         <wave|const|breathe|heartrate|point|winnower|stars|spectrum|plumflower|shoot|ambilight-rotate|ripple> \
+         <brightness-0-127> <speed-0-4> <left|right|up|down> <none|random|RRGGBB>"
+    );
+}
+
 fn probe_msi() -> Result<(), Box<dyn Error>> {
     let endpoints = HidInventory::enumerate()?;
     let exact: Vec<_> = endpoints
@@ -1800,6 +1856,30 @@ fn probe_poseidon() -> Result<(), Box<dyn Error>> {
         for endpoint in exact {
             println!(
                 "Found Thermaltake Poseidon Z RGB endpoint: {:04X}:{:04X}, interface {}, usage {:04X}:{:04X}",
+                endpoint.vendor_id,
+                endpoint.product_id,
+                endpoint.interface_number,
+                endpoint.usage_page,
+                endpoint.usage
+            );
+        }
+    }
+    println!("Probe completed without opening a device or writing a report.");
+    Ok(())
+}
+
+fn probe_keyrox() -> Result<(), Box<dyn Error>> {
+    let endpoints = HidInventory::enumerate()?;
+    let exact: Vec<_> = endpoints
+        .iter()
+        .filter_map(|endpoint| match_keyrox(endpoint).map(|model| (endpoint, model)))
+        .collect();
+    if exact.is_empty() {
+        println!("No exact Red Square Keyrox TKL endpoint found.");
+    } else {
+        for (endpoint, model) in exact {
+            println!(
+                "Found {model} endpoint: {:04X}:{:04X}, interface {}, usage {:04X}:{:04X}",
                 endpoint.vendor_id,
                 endpoint.product_id,
                 endpoint.interface_number,
@@ -2932,6 +3012,60 @@ fn set_poseidon(command: PoseidonCommand) -> Result<(), Box<dyn Error>> {
         println!("Applied and saved one Thermaltake Poseidon Z RGB profile transaction.");
     } else {
         println!("Applied one reversible Thermaltake Poseidon Z RGB direct transaction.");
+    }
+    Ok(())
+}
+
+fn set_keyrox(command: KeyroxCommand) -> Result<(), Box<dyn Error>> {
+    match &command {
+        KeyroxCommand::Custom { brightness, colors } => {
+            KeyroxCustomTransaction::new(colors, *brightness)?;
+        }
+        KeyroxCommand::HardwareMode {
+            mode,
+            brightness,
+            speed,
+            direction,
+            color,
+        } => {
+            KeyroxModeTransaction::new(*mode, *brightness, *speed, *direction, *color)?;
+        }
+    }
+    let endpoints = HidInventory::enumerate()?;
+    let mut exact = endpoints
+        .into_iter()
+        .filter_map(|endpoint| match_keyrox(&endpoint).map(|model| (endpoint, model)));
+    let (endpoint, model) = exact
+        .next()
+        .ok_or("exact Red Square Keyrox TKL endpoint not found")?;
+    if exact.next().is_some() {
+        return Err("more than one Keyrox TKL endpoint found; refusing to choose".into());
+    }
+    let matcher = if endpoint.product_id == KEYROX_TKL_MATCH.product_id {
+        KEYROX_TKL_MATCH
+    } else {
+        KEYROX_TKL_V2_MATCH
+    };
+    let output = HidOutput::<KEYROX_REPORT_LEN>::open_matching(&endpoint, matcher)?;
+    let persistent = matches!(command, KeyroxCommand::HardwareMode { .. });
+    let target = ControllerRef {
+        id: ControllerId::new(NonZeroU64::new(40).expect("forty is non-zero")),
+        incarnation: Incarnation::new(NonZeroU32::new(1).expect("one is non-zero")),
+    };
+    let actor = ControllerActor::start(target, KeyroxBackend { output }, 4)?;
+    let outcome = actor.submit_barrier(target, command)?.wait()?;
+    actor.shutdown()?;
+    match outcome {
+        CommandOutcome::Applied { .. } => {}
+        CommandOutcome::Failed { error, .. } => return Err(error.into()),
+        CommandOutcome::Superseded { .. } => {
+            return Err("Keyrox command was unexpectedly superseded".into());
+        }
+    }
+    if persistent {
+        println!("Applied one guarded {model} hardware-mode transaction.");
+    } else {
+        println!("Applied one reversible {model} Custom color transaction.");
     }
     Ok(())
 }
@@ -4739,6 +4873,82 @@ impl ControllerBackend for DuckyBackend {
 }
 
 #[derive(Clone, Debug)]
+enum KeyroxCommand {
+    Custom {
+        brightness: u8,
+        colors: Vec<Rgb8>,
+    },
+    HardwareMode {
+        mode: KeyroxMode,
+        brightness: u8,
+        speed: u8,
+        direction: KeyroxDirection,
+        color: KeyroxModeColor,
+    },
+}
+
+#[derive(Debug)]
+struct KeyroxBackend {
+    output: HidOutput<KEYROX_REPORT_LEN>,
+}
+
+#[derive(Debug)]
+enum KeyroxBackendError {
+    Settings(KeyroxInvalidSettings),
+    Output(HidTransportError),
+}
+
+impl fmt::Display for KeyroxBackendError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Settings(error) => write!(f, "invalid Red Square Keyrox settings: {error}"),
+            Self::Output(error) => {
+                write!(f, "could not communicate with Red Square Keyrox: {error}")
+            }
+        }
+    }
+}
+
+impl Error for KeyroxBackendError {}
+
+impl ControllerBackend for KeyroxBackend {
+    type Barrier = KeyroxCommand;
+    type Error = KeyroxBackendError;
+
+    fn apply_whole_color(&mut self, color: Rgb8) -> Result<(), Self::Error> {
+        KeyroxCustomTransaction::new(&[color; KEYROX_LED_COUNT], 255)
+            .map_err(KeyroxBackendError::Settings)?
+            .apply(&mut self.output)
+            .map_err(KeyroxBackendError::Output)
+    }
+
+    fn apply_barrier(&mut self, command: Self::Barrier) -> Result<(), Self::Error> {
+        match command {
+            KeyroxCommand::Custom { brightness, colors } => {
+                KeyroxCustomTransaction::new(&colors, brightness)
+                    .map_err(KeyroxBackendError::Settings)?
+                    .apply(&mut self.output)
+                    .map_err(KeyroxBackendError::Output)
+            }
+            KeyroxCommand::HardwareMode {
+                mode,
+                brightness,
+                speed,
+                direction,
+                color,
+            } => KeyroxModeTransaction::new(mode, brightness, speed, direction, color)
+                .map_err(KeyroxBackendError::Settings)?
+                .apply(&mut self.output)
+                .map_err(KeyroxBackendError::Output),
+        }
+    }
+
+    fn shutdown(&mut self) -> Result<(), Self::Error> {
+        Ok(())
+    }
+}
+
+#[derive(Clone, Debug)]
 enum PoseidonCommand {
     Direct {
         colors: Vec<Rgb8>,
@@ -5309,6 +5519,42 @@ fn parse_poseidon_mode(input: &str) -> Result<PoseidonMode, Box<dyn Error>> {
         "ripple" => Ok(PoseidonMode::Ripple),
         "reactive" => Ok(PoseidonMode::Reactive),
         _ => Err("Poseidon Z RGB mode must be static, wave, ripple, or reactive".into()),
+    }
+}
+
+fn parse_keyrox_mode(input: &str) -> Result<KeyroxMode, Box<dyn Error>> {
+    match input {
+        "wave" => Ok(KeyroxMode::Wave),
+        "const" => Ok(KeyroxMode::Const),
+        "breathe" => Ok(KeyroxMode::Breathe),
+        "heartrate" => Ok(KeyroxMode::Heartrate),
+        "point" => Ok(KeyroxMode::Point),
+        "winnower" => Ok(KeyroxMode::Winnower),
+        "stars" => Ok(KeyroxMode::Stars),
+        "spectrum" => Ok(KeyroxMode::Spectrum),
+        "plumflower" => Ok(KeyroxMode::Plumflower),
+        "shoot" => Ok(KeyroxMode::Shoot),
+        "ambilight-rotate" => Ok(KeyroxMode::AmbilightRotate),
+        "ripple" => Ok(KeyroxMode::Ripple),
+        _ => Err("unknown Red Square Keyrox hardware mode".into()),
+    }
+}
+
+fn parse_keyrox_direction(input: &str) -> Result<KeyroxDirection, Box<dyn Error>> {
+    match input {
+        "left" => Ok(KeyroxDirection::Left),
+        "right" => Ok(KeyroxDirection::Right),
+        "up" => Ok(KeyroxDirection::Up),
+        "down" => Ok(KeyroxDirection::Down),
+        _ => Err("Keyrox direction must be left, right, up, or down".into()),
+    }
+}
+
+fn parse_keyrox_color(input: &str) -> Result<KeyroxModeColor, Box<dyn Error>> {
+    match input {
+        "none" => Ok(KeyroxModeColor::None),
+        "random" => Ok(KeyroxModeColor::Random),
+        value => Ok(KeyroxModeColor::Fixed(parse_rgb(value)?)),
     }
 }
 

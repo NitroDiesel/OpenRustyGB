@@ -622,3 +622,21 @@ matching device completes its live test.
 Physical Thermaltake Poseidon Z RGB hardware was not present for this
 contraction. The family remains release-blocked by the global hardware-evidence
 policy until a matching device completes its live test.
+
+## RedSquareKeyroxController
+
+- Rust package: `openrustygb-driver-red-square-keyrox`
+- Devices: Red Square Keyrox TKL and Red Square Keyrox TKL V2 keyboards
+- Match: VID `1A2C`, PID `1511` or `2511`, interface `3`, usage `FF00:0002`
+- Preserved model: one 87-key TKL matrix zone; Custom, Wave, Const, Breathe, Heartrate, Point, Winnower, Stars, Spectrum, Plumflower, Shoot, Ambilight Rotate, and Ripple modes
+- Preserved settings: Custom brightness `0..255`; hardware-effect brightness `0..127`; effect speed `0..4`; four-way Wave direction; up/down Winnower and Ambilight Rotate direction; fixed and random mode colors where upstream exposes them
+- Preserved layout: the original 6-by-18 matrix, standardized key labels, and all 87 logical-to-protocol sequence positions
+- Preserved output: 521-byte feature reports with report ID `00`, Custom mode selection and per-key RGBA placement, hardware mode and mode-data reports, and the native 10 ms delay after every feature write
+- Safety boundary: Custom per-key writes require `--confirm-reversible-write`; hardware-effect changes require `--confirm-persistent-write` because the device may retain them even though the protocol has no separate save command
+- Safety correction: commands require exactly 87 colors, reject settings unsupported by the selected mode, enforce all upstream brightness and speed ranges, and zero every unused report byte
+- Verification: both exact endpoint matchers, mode and mode-data packet goldens, logical-to-protocol color placement goldens, invalid-setting and invalid-count tests, exact matrix/model metadata, executable read-only probe, guarded Custom and hardware-effect commands, workspace Clippy and tests
+- Deleted native files: `RedSquareKeyroxControllerDetect.cpp`, `RedSquareKeyroxController.cpp`, `RedSquareKeyroxController.h`, `RGBController_RedSquareKeyrox.cpp`, `RGBController_RedSquareKeyrox.h`
+
+Physical Red Square Keyrox hardware was not present for this contraction. The
+family remains release-blocked by the global hardware-evidence policy until a
+matching device completes its live test.
