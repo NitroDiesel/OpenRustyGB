@@ -48,6 +48,7 @@ members = [
     "crates/drivers/red-square-keyrox",
     "crates/drivers/valkyrie-vk99",
     "crates/drivers/msi-laptop",
+    "crates/drivers/hp-omen-30l",
     "crates/openrustygb-app",
     "xtask",
 ]

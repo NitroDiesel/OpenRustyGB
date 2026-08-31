@@ -85,6 +85,11 @@ use openrustygb_driver_glorious_model_i::{
     ModeTransaction as GloriousModeTransaction, firmware_version as glorious_firmware_version,
     matches as matches_glorious,
 };
+use openrustygb_driver_hp_omen_30l::{
+    InvalidSettings as OmenInvalidSettings, MATCH as OMEN_MATCH,
+    ModeTransaction as OmenTransaction, OUTPUT_REPORT_LEN as OMEN_REPORT_LEN, OmenMode,
+    matches as matches_omen,
+};
 use openrustygb_driver_hyperx_mousemat::{
     DirectColorTransaction as HyperXMousematColorTransaction,
     FEATURE_REPORT_LEN as HYPERX_MOUSEMAT_REPORT_LEN, HyperXMousematModel,
@@ -245,6 +250,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     print_keyrox_usage();
     print_valkyrie_usage();
     print_msi_laptop_usage();
+    print_omen_usage();
     Ok(())
 }
 
@@ -265,6 +271,7 @@ fn dispatch_probe(args: &[String]) -> Option<Result<(), Box<dyn Error>>> {
         [command] if command == "probe-keyrox" => Some(probe_keyrox()),
         [command] if command == "probe-valkyrie-vk99" => Some(probe_valkyrie()),
         [command] if command == "probe-msi-laptop" => Some(probe_msi_laptop()),
+        [command] if command == "probe-hp-omen-30l" => Some(probe_omen()),
         [command] if command == "probe-ek-loop-connect" => Some(probe_ek()),
         [command] if command == "probe-dark-project" => Some(probe_dark_project()),
         [command] if command == "probe-stream-deck" => Some(probe_stream_deck()),
@@ -1043,6 +1050,9 @@ fn dispatch_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
 }
 
 fn dispatch_structured_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
+    if dispatch_omen_write(args)? {
+        return Ok(true);
+    }
     if dispatch_keyrox_write(args)? {
         return Ok(true);
     }
@@ -1092,6 +1102,36 @@ fn dispatch_structured_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
         return Ok(true);
     }
     Ok(false)
+}
+
+fn dispatch_omen_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
+    match args {
+        [command, confirmation, brightness, colors @ ..]
+            if command == "set-hp-omen-30l-direct"
+                && confirmation == "--confirm-reversible-write" =>
+        {
+            set_omen(OmenCommand {
+                mode: OmenMode::Direct,
+                speed: 0,
+                brightness: parse_u8_decimal(brightness, "brightness")?,
+                colors: parse_rgb_colors(colors)?,
+            })?;
+            Ok(true)
+        }
+        [command, confirmation, mode, speed, brightness, colors @ ..]
+            if command == "set-hp-omen-30l-mode"
+                && confirmation == "--confirm-persistent-write" =>
+        {
+            set_omen(OmenCommand {
+                mode: parse_omen_mode(mode)?,
+                speed: parse_u8_decimal(speed, "speed")?,
+                brightness: parse_u8_decimal(brightness, "brightness")?,
+                colors: parse_rgb_colors(colors)?,
+            })?;
+            Ok(true)
+        }
+        _ => Ok(false),
+    }
 }
 
 fn dispatch_keyrox_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
@@ -1742,6 +1782,17 @@ fn print_msi_laptop_usage() {
     );
 }
 
+fn print_omen_usage() {
+    eprintln!(
+        "  openrustygb probe-hp-omen-30l\n  \
+         openrustygb set-hp-omen-30l-direct --confirm-reversible-write \
+         <brightness-0-100> <7-RRGGBB-colors>\n  \
+         openrustygb set-hp-omen-30l-mode --confirm-persistent-write \
+         <static|off|breathing|color-cycle|blinking|wave|radial> \
+         <speed-1-3> <brightness-0-100> <mode-colors>"
+    );
+}
+
 fn probe_msi() -> Result<(), Box<dyn Error>> {
     let endpoints = HidInventory::enumerate()?;
     let exact: Vec<_> = endpoints
@@ -1977,6 +2028,30 @@ fn probe_msi_laptop() -> Result<(), Box<dyn Error>> {
             println!(
                 "Found {} endpoint: {:04X}:{:04X}, interface {}, usage {:04X}:{:04X}",
                 device.name(),
+                endpoint.vendor_id,
+                endpoint.product_id,
+                endpoint.interface_number,
+                endpoint.usage_page,
+                endpoint.usage
+            );
+        }
+    }
+    println!("Probe completed without opening a device or writing a report.");
+    Ok(())
+}
+
+fn probe_omen() -> Result<(), Box<dyn Error>> {
+    let endpoints = HidInventory::enumerate()?;
+    let exact: Vec<_> = endpoints
+        .iter()
+        .filter(|endpoint| matches_omen(endpoint))
+        .collect();
+    if exact.is_empty() {
+        println!("No exact HP Omen 30L lighting endpoint found.");
+    } else {
+        for endpoint in exact {
+            println!(
+                "Found HP Omen 30L endpoint: {:04X}:{:04X}, interface {}, usage {:04X}:{:04X}",
                 endpoint.vendor_id,
                 endpoint.product_id,
                 endpoint.interface_number,
@@ -3333,6 +3408,49 @@ fn set_msi_laptop_colors(
         "Applied one reversible {} per-LED color transaction.",
         requested_device.name()
     );
+    Ok(())
+}
+
+fn set_omen(command: OmenCommand) -> Result<(), Box<dyn Error>> {
+    OmenTransaction::new(
+        command.mode,
+        command.speed,
+        command.brightness,
+        &command.colors,
+    )?;
+    let endpoints = HidInventory::enumerate()?;
+    let mut exact = endpoints.into_iter().filter(matches_omen);
+    let endpoint = exact
+        .next()
+        .ok_or("exact HP Omen 30L lighting endpoint not found")?;
+    if exact.next().is_some() {
+        return Err("more than one HP Omen 30L endpoint found; refusing to choose".into());
+    }
+    let output = HidOutput::<OMEN_REPORT_LEN>::open_matching(&endpoint, OMEN_MATCH)?;
+    let target = ControllerRef {
+        id: ControllerId::new(NonZeroU64::new(43).expect("forty-three is non-zero")),
+        incarnation: Incarnation::new(NonZeroU32::new(1).expect("one is non-zero")),
+    };
+    let persistent = command.mode != OmenMode::Direct;
+    let mode = command.mode;
+    let actor = ControllerActor::start(target, OmenBackend { output }, 4)?;
+    let outcome = actor.submit_barrier(target, command)?.wait()?;
+    actor.shutdown()?;
+    match outcome {
+        CommandOutcome::Applied { .. } => {}
+        CommandOutcome::Failed { error, .. } => return Err(error.into()),
+        CommandOutcome::Superseded { .. } => {
+            return Err("HP Omen 30L command was unexpectedly superseded".into());
+        }
+    }
+    if persistent {
+        println!(
+            "Applied one guarded HP Omen 30L {} transaction.",
+            mode.name()
+        );
+    } else {
+        println!("Applied one reversible HP Omen 30L Direct transaction.");
+    }
     Ok(())
 }
 
@@ -5245,6 +5363,64 @@ impl ControllerBackend for MsiLaptopBackend {
 }
 
 #[derive(Clone, Debug)]
+struct OmenCommand {
+    mode: OmenMode,
+    speed: u8,
+    brightness: u8,
+    colors: Vec<Rgb8>,
+}
+
+#[derive(Debug)]
+struct OmenBackend {
+    output: HidOutput<OMEN_REPORT_LEN>,
+}
+
+#[derive(Debug)]
+enum OmenBackendError {
+    Settings(OmenInvalidSettings),
+    Output(ExactWriteError<HidTransportError>),
+}
+
+impl fmt::Display for OmenBackendError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Settings(error) => write!(f, "invalid HP Omen 30L settings: {error}"),
+            Self::Output(error) => write!(f, "could not communicate with HP Omen 30L: {error}"),
+        }
+    }
+}
+
+impl Error for OmenBackendError {}
+
+impl ControllerBackend for OmenBackend {
+    type Barrier = OmenCommand;
+    type Error = OmenBackendError;
+
+    fn apply_whole_color(&mut self, color: Rgb8) -> Result<(), Self::Error> {
+        OmenTransaction::new(OmenMode::Direct, 0, 100, &[color; 7])
+            .map_err(OmenBackendError::Settings)?
+            .apply(&mut self.output)
+            .map_err(OmenBackendError::Output)
+    }
+
+    fn apply_barrier(&mut self, command: Self::Barrier) -> Result<(), Self::Error> {
+        OmenTransaction::new(
+            command.mode,
+            command.speed,
+            command.brightness,
+            &command.colors,
+        )
+        .map_err(OmenBackendError::Settings)?
+        .apply(&mut self.output)
+        .map_err(OmenBackendError::Output)
+    }
+
+    fn shutdown(&mut self) -> Result<(), Self::Error> {
+        Ok(())
+    }
+}
+
+#[derive(Clone, Debug)]
 enum KeyroxCommand {
     Custom {
         brightness: u8,
@@ -5978,6 +6154,19 @@ fn parse_luxafor_pattern(input: &str) -> Result<LuxaforPattern, Box<dyn Error>> 
     }
 }
 
+fn parse_omen_mode(input: &str) -> Result<OmenMode, Box<dyn Error>> {
+    match input {
+        "static" => Ok(OmenMode::Static),
+        "off" => Ok(OmenMode::Off),
+        "breathing" => Ok(OmenMode::Breathing),
+        "color-cycle" => Ok(OmenMode::ColorCycle),
+        "blinking" => Ok(OmenMode::Blinking),
+        "wave" => Ok(OmenMode::Wave),
+        "radial" => Ok(OmenMode::Radial),
+        _ => Err("unknown HP Omen 30L mode".into()),
+    }
+}
+
 fn parse_aoc_mode(input: &str) -> Result<AocMode, Box<dyn Error>> {
     match input {
         "static" => Ok(AocMode::Static),
@@ -6231,6 +6420,16 @@ mod tests {
         assert!(parse_thingm_mode("breathing").is_err());
         assert_eq!(parse_u32_decimal("65535", "speed").unwrap(), 65_535);
         assert!(parse_u32_decimal("4294967296", "speed").is_err());
+    }
+
+    #[test]
+    fn omen_mode_parser_excludes_direct_from_persistent_command() {
+        assert_eq!(
+            parse_omen_mode("color-cycle").unwrap(),
+            OmenMode::ColorCycle
+        );
+        assert!(parse_omen_mode("direct").is_err());
+        assert!(parse_omen_mode("Color Cycle").is_err());
     }
 
     #[cfg(target_os = "windows")]

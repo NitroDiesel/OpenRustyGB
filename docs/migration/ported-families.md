@@ -213,6 +213,24 @@ Physical supported HyperX mousemat hardware was not present for this
 contraction. The family remains release-blocked by the global hardware-evidence
 policy until a matching device completes its live test.
 
+## HPOmen30LController
+
+- Rust package: `openrustygb-driver-hp-omen-30l`
+- Device: HP Omen 30L motherboard lighting controller
+- Match: VID `103C`, PID `84FD`; the native detector does not constrain interface, usage page, or usage
+- Preserved model: seven single-LED zones for the Omen logo, light bar, front fan, CPU cooler, and three front fans
+- Preserved modes: Direct, Static, Off, Breathing, Color Cycle, Blinking, Wave, and Radial; brightness `0..100`; effect speed `1..3`; one to six effect colors except Wave, which requires six
+- Preserved output: one 58-byte HID output per zone for Direct, Static, and Off; one output per zone and effect color for hardware effects; version `12`, powered-on state `01`, custom theme `00`, exact RGB/RGBA zone offsets, one-based zone and color indexes, and original mode/type values
+- Safety boundary: Direct uses `--confirm-reversible-write`; Static, Off, and hardware effects use `--confirm-persistent-write` because the packets select the powered-on hardware state
+- Safety correction: settings and color counts are validated, every unused packet byte is zero, ambiguous endpoint matches are refused, and every 58-byte HID write must be accepted in full
+- Verification: unconstrained-interface matcher negatives, Direct/Static zone-offset goldens, effect zone/color ordering, Off and range checks, short-write rejection, model metadata, executable read-only probe, guarded reversible and persistent commands, workspace Clippy and tests
+- Deleted native files: `HPOmen30LControllerDetect.cpp`, `HPOmen30LController.cpp`, `HPOmen30LController.h`, `RGBController_HPOmen30L.cpp`, `RGBController_HPOmen30L.h`
+
+Physical HP Omen 30L hardware was not present for this contraction. The
+read-only probe found no matching endpoint and opened no device. The family
+remains release-blocked by the global hardware-evidence policy until a matching
+device completes its live test.
+
 ## LegoDimensionsToypadBaseController
 
 - Rust package: `openrustygb-driver-lego-dimensions-toypad`

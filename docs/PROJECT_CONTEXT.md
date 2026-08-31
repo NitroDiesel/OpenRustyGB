@@ -41,14 +41,14 @@ editing prose alone.
 
 ## Verified state
 
-Snapshot: 2026-09-01, after the MSI Raider A18 laptop migration.
+Snapshot: 2026-09-01, after the HP Omen 30L migration.
 
-- 42 of 197 pinned controller families are contracted to Rust.
-- 183 of 224 detector sources remain native; 41 detector sources have Rust
+- 43 of 197 pinned controller families are contracted to Rust.
+- 182 of 224 detector sources remain native; 42 detector sources have Rust
   owners.
-- 43 Rust driver packages exist. One package is the requested HyperX Pulsefire
+- 44 Rust driver packages exist. One package is the requested HyperX Pulsefire
   Haste 2 support that did not replace an upstream pinned family.
-- 1,895 C/C++/Objective-C source or header files and 48 native or Qt build
+- 1,890 C/C++/Objective-C source or header files and 48 native or Qt build
   descriptions remain.
 - The Rust-only source gate is intentionally blocked. There is no supported
   parity installer or release yet.
@@ -75,7 +75,7 @@ paths appropriate to each upstream family.
 Recent contracted keyboard families include Skyloong GK104 Pro, Anne Pro 2,
 Ionico, XPG Summoner, Ducky, Thermaltake Poseidon Z RGB, Red Square Keyrox, and
 Valkyrie VK99. The MSI Raider A18 laptop keyboard and lightbar family is also
-contracted.
+contracted, along with the HP Omen 30L motherboard lighting controller.
 The ledger contains the complete set and verification evidence.
 
 HyperX Pulsefire Haste 2 support remains part of the product. Keep it presented

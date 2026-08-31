@@ -27,6 +27,7 @@ openrustygb-driver-gigabyte-aorus-m2 = { path = "../drivers/gigabyte-aorus-m2" }
 openrustygb-driver-gigabyte-aorus-c300-glass = { path = "../drivers/gigabyte-aorus-c300-glass" }
 openrustygb-driver-hyperx-pulsefire-haste2 = { path = "../drivers/hyperx-pulsefire-haste2" }
 openrustygb-driver-hyperx-mousemat = { path = "../drivers/hyperx-mousemat" }
+openrustygb-driver-hp-omen-30l = { path = "../drivers/hp-omen-30l" }
 openrustygb-driver-hyte-keeb-tkl = { path = "../drivers/hyte-keeb-tkl" }
 openrustygb-driver-instant-mice = { path = "../drivers/instant-mice" }
 openrustygb-driver-intel-arc-a770-le = { path = "../drivers/intel-arc-a770-le" }
