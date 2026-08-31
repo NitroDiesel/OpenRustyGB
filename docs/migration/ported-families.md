@@ -657,3 +657,20 @@ matching device completes its live test.
 Physical Valkyrie VK99 hardware was not present for this contraction. The
 family remains release-blocked by the global hardware-evidence policy until a
 matching device completes its live test.
+
+## MSILaptopController
+
+- Rust package: `openrustygb-driver-msi-laptop`
+- Devices: MSI Raider A18 HX A9WJG SteelSeries keyboard lighting controller and lightbar/logo controller
+- Match: DMI manufacturer `Micro-Star International Co., Ltd.` and product `Raider A18 HX A9WJG`; keyboard HID `1038:1122` on any interface; lightbar HID `1038:1161` on interface `0`; the native detectors do not constrain usage page or usage
+- Preserved model: one 102-key 6-by-23 matrix keyboard zone and an ALC device with a three-LED linear Lightbar zone plus a single Logo zone
+- Preserved output: one zero-initialized 525-byte feature report with report ID `00`, command `0C`, KLC packet ID `66` or ALC packet ID `06`, four-byte LED ID/RGB entries starting at byte 5, and `FF` in every unused LED-ID slot
+- System identity boundary: Windows reads the BIOS registry values and Linux reads standard DMI sysfs values; unsupported or unreadable identities remain unmatched instead of broadening the HID detector
+- Safety correction: callers must provide exactly 102 keyboard colors or four lightbar/logo colors, unused bytes are deterministic, and writes require the reversible-write guard plus a unique model-and-endpoint match
+- Verification: exact DMI/product/interface matcher tests, packet header/ID/RGB/ignored-slot goldens, exact matrix coverage, model descriptions, transport dispatch, executable read-only probe, guarded model-specific commands, workspace Clippy and tests
+- Deleted native files: `MSILaptopControllerDetect.cpp`, `MSILaptopController.cpp`, `MSILaptopController.h`, `RGBController_MSILaptop.cpp`, `RGBController_MSILaptop.h`
+
+Physical supported MSI Raider A18 hardware was not present for this contraction.
+The read-only probe identified this test system as a Lenovo 82AX and opened no
+device. The family remains release-blocked by the global hardware-evidence
+policy until a matching device completes its live test.

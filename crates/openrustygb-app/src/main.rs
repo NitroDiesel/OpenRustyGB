@@ -141,6 +141,11 @@ use openrustygb_driver_msi_3_zone_keyboard::{
     FEATURE_REPORT_LEN as MSI_REPORT_LEN, MATCH as MSI_MATCH,
     PerLedColorTransaction as MsiColorTransaction, matches as matches_msi,
 };
+use openrustygb_driver_msi_laptop::{
+    DirectColorReport as MsiLaptopColorReport, FEATURE_REPORT_LEN as MSI_LAPTOP_REPORT_LEN,
+    InvalidColorCount as MsiLaptopInvalidColorCount, MsiLaptopDevice, SystemIdentity,
+    match_device as match_msi_laptop,
+};
 use openrustygb_driver_n5312a_mouse::{
     ColorTransaction as N5312ColorTransaction, FEATURE_REPORT_LEN as N5312_REPORT_LEN,
     Initialization as N5312Initialization, InvalidModeSettings, MATCH as N5312_MATCH,
@@ -239,6 +244,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     print_poseidon_usage();
     print_keyrox_usage();
     print_valkyrie_usage();
+    print_msi_laptop_usage();
     Ok(())
 }
 
@@ -258,6 +264,7 @@ fn dispatch_probe(args: &[String]) -> Option<Result<(), Box<dyn Error>>> {
         [command] if command == "probe-poseidon-z-rgb" => Some(probe_poseidon()),
         [command] if command == "probe-keyrox" => Some(probe_keyrox()),
         [command] if command == "probe-valkyrie-vk99" => Some(probe_valkyrie()),
+        [command] if command == "probe-msi-laptop" => Some(probe_msi_laptop()),
         [command] if command == "probe-ek-loop-connect" => Some(probe_ek()),
         [command] if command == "probe-dark-project" => Some(probe_dark_project()),
         [command] if command == "probe-stream-deck" => Some(probe_stream_deck()),
@@ -1527,6 +1534,8 @@ fn dispatch_per_led_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
             | "set-ducky"
             | "set-valkyrie-vk99-pro"
             | "set-valkyrie-vk99"
+            | "set-msi-laptop-keyboard"
+            | "set-msi-laptop-lightbar"
     ) {
         return Ok(false);
     }
@@ -1546,6 +1555,12 @@ fn dispatch_per_led_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
             set_valkyrie_colors(ValkyrieModel::Vk99Pro, &colors)?;
         }
         "set-valkyrie-vk99" => set_valkyrie_colors(ValkyrieModel::Vk99, &colors)?,
+        "set-msi-laptop-keyboard" => {
+            set_msi_laptop_colors(MsiLaptopDevice::Keyboard, &colors)?;
+        }
+        "set-msi-laptop-lightbar" => {
+            set_msi_laptop_colors(MsiLaptopDevice::Lightbar, &colors)?;
+        }
         _ => unreachable!("command was checked above"),
     }
     Ok(true)
@@ -1716,6 +1731,14 @@ fn print_valkyrie_usage() {
         "  openrustygb probe-valkyrie-vk99\n  \
          openrustygb set-valkyrie-vk99-pro --confirm-reversible-write <98-RRGGBB-colors>\n  \
          openrustygb set-valkyrie-vk99 --confirm-reversible-write <102-RRGGBB-colors>"
+    );
+}
+
+fn print_msi_laptop_usage() {
+    eprintln!(
+        "  openrustygb probe-msi-laptop\n  \
+         openrustygb set-msi-laptop-keyboard --confirm-reversible-write <102-RRGGBB-colors>\n  \
+         openrustygb set-msi-laptop-lightbar --confirm-reversible-write <4-RRGGBB-colors>"
     );
 }
 
@@ -1935,6 +1958,94 @@ fn probe_valkyrie() -> Result<(), Box<dyn Error>> {
     }
     println!("Probe completed without opening a device or writing a report.");
     Ok(())
+}
+
+fn probe_msi_laptop() -> Result<(), Box<dyn Error>> {
+    let system = detect_system_identity();
+    let endpoints = HidInventory::enumerate()?;
+    let exact: Vec<_> = endpoints
+        .iter()
+        .filter_map(|endpoint| match_msi_laptop(endpoint, &system).map(|device| (endpoint, device)))
+        .collect();
+    if exact.is_empty() {
+        println!(
+            "No exact MSI Raider A18 laptop lighting endpoint found for system '{}' '{}'.",
+            system.manufacturer, system.product_name
+        );
+    } else {
+        for (endpoint, device) in exact {
+            println!(
+                "Found {} endpoint: {:04X}:{:04X}, interface {}, usage {:04X}:{:04X}",
+                device.name(),
+                endpoint.vendor_id,
+                endpoint.product_id,
+                endpoint.interface_number,
+                endpoint.usage_page,
+                endpoint.usage
+            );
+        }
+    }
+    println!("Probe completed without opening a device or writing a report.");
+    Ok(())
+}
+
+#[cfg(target_os = "windows")]
+fn detect_system_identity() -> SystemIdentity {
+    SystemIdentity {
+        manufacturer: read_windows_bios_value("SystemManufacturer").unwrap_or_default(),
+        product_name: read_windows_bios_value("SystemProductName").unwrap_or_default(),
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn read_windows_bios_value(name: &str) -> Option<String> {
+    let output = std::process::Command::new("reg.exe")
+        .args([
+            "query",
+            r"HKLM\HARDWARE\DESCRIPTION\System\BIOS",
+            "/v",
+            name,
+        ])
+        .output()
+        .ok()?;
+    output.status.success().then_some(())?;
+    parse_windows_registry_string(&String::from_utf8_lossy(&output.stdout), name)
+}
+
+#[cfg(target_os = "windows")]
+fn parse_windows_registry_string(output: &str, name: &str) -> Option<String> {
+    output.lines().find_map(|line| {
+        let line = line.trim();
+        let rest = line.strip_prefix(name)?.trim_start();
+        rest.strip_prefix("REG_SZ")
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_owned)
+    })
+}
+
+#[cfg(target_os = "linux")]
+fn detect_system_identity() -> SystemIdentity {
+    SystemIdentity {
+        manufacturer: read_linux_dmi_value("sys_vendor"),
+        product_name: read_linux_dmi_value("product_name"),
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn read_linux_dmi_value(name: &str) -> String {
+    std::fs::read_to_string(format!("/sys/class/dmi/id/{name}"))
+        .unwrap_or_default()
+        .trim()
+        .to_owned()
+}
+
+#[cfg(not(any(target_os = "windows", target_os = "linux")))]
+fn detect_system_identity() -> SystemIdentity {
+    SystemIdentity {
+        manufacturer: String::new(),
+        product_name: String::new(),
+    }
 }
 
 fn probe_viper() -> Result<(), Box<dyn Error>> {
@@ -3165,6 +3276,62 @@ fn set_valkyrie_colors(
     println!(
         "Applied one reversible {} per-key color transaction.",
         requested_model.name()
+    );
+    Ok(())
+}
+
+fn set_msi_laptop_colors(
+    requested_device: MsiLaptopDevice,
+    colors: &[Rgb8],
+) -> Result<(), Box<dyn Error>> {
+    MsiLaptopColorReport::new(requested_device, colors)?;
+    let system = detect_system_identity();
+    let endpoints = HidInventory::enumerate()?;
+    let mut exact = endpoints.into_iter().filter(|endpoint| {
+        match_msi_laptop(endpoint, &system).is_some_and(|device| device == requested_device)
+    });
+    let endpoint = exact
+        .next()
+        .ok_or("exact requested MSI Raider A18 laptop lighting endpoint not found")?;
+    if exact.next().is_some() {
+        return Err(
+            "more than one matching MSI Raider A18 laptop endpoint found; refusing to choose"
+                .into(),
+        );
+    }
+    let output =
+        HidOutput::<MSI_LAPTOP_REPORT_LEN>::open_matching(&endpoint, requested_device.matcher())?;
+    let target = ControllerRef {
+        id: ControllerId::new(NonZeroU64::new(42).expect("forty-two is non-zero")),
+        incarnation: Incarnation::new(NonZeroU32::new(1).expect("one is non-zero")),
+    };
+    let actor = ControllerActor::start(
+        target,
+        MsiLaptopBackend {
+            device: requested_device,
+            output,
+        },
+        4,
+    )?;
+    let outcome = actor
+        .submit_barrier(
+            target,
+            MsiLaptopCommand {
+                colors: colors.to_vec(),
+            },
+        )?
+        .wait()?;
+    actor.shutdown()?;
+    match outcome {
+        CommandOutcome::Applied { .. } => {}
+        CommandOutcome::Failed { error, .. } => return Err(error.into()),
+        CommandOutcome::Superseded { .. } => {
+            return Err("MSI laptop color command was unexpectedly superseded".into());
+        }
+    }
+    println!(
+        "Applied one reversible {} per-LED color transaction.",
+        requested_device.name()
     );
     Ok(())
 }
@@ -5025,6 +5192,59 @@ impl ControllerBackend for ValkyrieBackend {
 }
 
 #[derive(Clone, Debug)]
+struct MsiLaptopCommand {
+    colors: Vec<Rgb8>,
+}
+
+#[derive(Debug)]
+struct MsiLaptopBackend {
+    device: MsiLaptopDevice,
+    output: HidOutput<MSI_LAPTOP_REPORT_LEN>,
+}
+
+#[derive(Debug)]
+enum MsiLaptopBackendError {
+    Colors(MsiLaptopInvalidColorCount),
+    Output(HidTransportError),
+}
+
+impl fmt::Display for MsiLaptopBackendError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Colors(error) => write!(f, "invalid MSI laptop color count: {error}"),
+            Self::Output(error) => {
+                write!(f, "could not communicate with MSI laptop lighting: {error}")
+            }
+        }
+    }
+}
+
+impl Error for MsiLaptopBackendError {}
+
+impl ControllerBackend for MsiLaptopBackend {
+    type Barrier = MsiLaptopCommand;
+    type Error = MsiLaptopBackendError;
+
+    fn apply_whole_color(&mut self, color: Rgb8) -> Result<(), Self::Error> {
+        MsiLaptopColorReport::new(self.device, &vec![color; self.device.led_count()])
+            .map_err(MsiLaptopBackendError::Colors)?
+            .apply(&mut self.output)
+            .map_err(MsiLaptopBackendError::Output)
+    }
+
+    fn apply_barrier(&mut self, command: Self::Barrier) -> Result<(), Self::Error> {
+        MsiLaptopColorReport::new(self.device, &command.colors)
+            .map_err(MsiLaptopBackendError::Colors)?
+            .apply(&mut self.output)
+            .map_err(MsiLaptopBackendError::Output)
+    }
+
+    fn shutdown(&mut self) -> Result<(), Self::Error> {
+        Ok(())
+    }
+}
+
+#[derive(Clone, Debug)]
 enum KeyroxCommand {
     Custom {
         brightness: u8,
@@ -6011,5 +6231,23 @@ mod tests {
         assert!(parse_thingm_mode("breathing").is_err());
         assert_eq!(parse_u32_decimal("65535", "speed").unwrap(), 65_535);
         assert!(parse_u32_decimal("4294967296", "speed").is_err());
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn windows_bios_registry_parser_keeps_spaced_values() {
+        let output = r"
+HKEY_LOCAL_MACHINE\HARDWARE\DESCRIPTION\System\BIOS
+    SystemManufacturer    REG_SZ    Micro-Star International Co., Ltd.
+    SystemProductName     REG_SZ    Raider A18 HX A9WJG
+";
+        assert_eq!(
+            parse_windows_registry_string(output, "SystemManufacturer").as_deref(),
+            Some("Micro-Star International Co., Ltd.")
+        );
+        assert_eq!(
+            parse_windows_registry_string(output, "SystemProductName").as_deref(),
+            Some("Raider A18 HX A9WJG")
+        );
     }
 }

@@ -47,6 +47,7 @@ members = [
     "crates/drivers/thermaltake-poseidon-z-rgb",
     "crates/drivers/red-square-keyrox",
     "crates/drivers/valkyrie-vk99",
+    "crates/drivers/msi-laptop",
     "crates/openrustygb-app",
     "xtask",
 ]
