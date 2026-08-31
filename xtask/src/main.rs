@@ -52,6 +52,7 @@ const PORTED_FAMILIES: &[(&str, &str)] = &[
         "ThermaltakePoseidonZRGBController",
         "thermaltake-poseidon-z-rgb",
     ),
+    ("ValkyrieKeyboardController", "valkyrie-vk99"),
     ("WushiController", "wushi-l50"),
     ("XPGSummonerKeyboardController", "xpg-summoner"),
 ];
@@ -93,6 +94,7 @@ const PORTED_DETECTOR_SOURCES: &[&str] = &[
     "Controllers/ThingMController/ThingMControllerDetect.cpp",
     "Controllers/TecknetController/TecknetControllerDetect.cpp",
     "Controllers/ThermaltakePoseidonZRGBController/ThermaltakePoseidonZRGBControllerDetect.cpp",
+    "Controllers/ValkyrieKeyboardController/ValkyrieKeyboardControllerDetect.cpp",
     "Controllers/WushiController/WushiL50USBDetect.cpp",
     "Controllers/XPGSummonerKeyboardController/XPGSummonerControllerDetect.cpp",
 ];

@@ -203,6 +203,10 @@ use openrustygb_driver_thingm_blink1_mk2::{
     BlinkMode, FEATURE_REPORT_LEN as THINGM_REPORT_LEN, MATCH as THINGM_MATCH,
     ModeTransaction as ThingMModeTransaction, matches as matches_thingm,
 };
+use openrustygb_driver_valkyrie_vk99::{
+    DirectColorTransaction as ValkyrieColorTransaction, FEATURE_REPORT_LEN as VALKYRIE_REPORT_LEN,
+    InvalidColorCount as ValkyrieInvalidColorCount, ValkyrieModel, match_model as match_valkyrie,
+};
 use openrustygb_driver_wushi_l50::{
     Direction as WushiDirection, InvalidSettings as WushiInvalidSettings,
     LED_COUNT as WUSHI_LED_COUNT, MATCH as WUSHI_MATCH, ModeTransaction as WushiModeTransaction,
@@ -234,6 +238,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     print_ducky_usage();
     print_poseidon_usage();
     print_keyrox_usage();
+    print_valkyrie_usage();
     Ok(())
 }
 
@@ -252,6 +257,7 @@ fn dispatch_probe(args: &[String]) -> Option<Result<(), Box<dyn Error>>> {
         [command] if command == "probe-ducky" => Some(probe_ducky()),
         [command] if command == "probe-poseidon-z-rgb" => Some(probe_poseidon()),
         [command] if command == "probe-keyrox" => Some(probe_keyrox()),
+        [command] if command == "probe-valkyrie-vk99" => Some(probe_valkyrie()),
         [command] if command == "probe-ek-loop-connect" => Some(probe_ek()),
         [command] if command == "probe-dark-project" => Some(probe_dark_project()),
         [command] if command == "probe-stream-deck" => Some(probe_stream_deck()),
@@ -1519,6 +1525,8 @@ fn dispatch_per_led_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
             | "set-intel-arc-a770-le"
             | "set-xpg-summoner"
             | "set-ducky"
+            | "set-valkyrie-vk99-pro"
+            | "set-valkyrie-vk99"
     ) {
         return Ok(false);
     }
@@ -1534,6 +1542,10 @@ fn dispatch_per_led_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
         "set-intel-arc-a770-le" => set_intel_arc_colors(&colors)?,
         "set-xpg-summoner" => set_xpg_summoner_colors(&colors)?,
         "set-ducky" => set_ducky_colors(&colors)?,
+        "set-valkyrie-vk99-pro" => {
+            set_valkyrie_colors(ValkyrieModel::Vk99Pro, &colors)?;
+        }
+        "set-valkyrie-vk99" => set_valkyrie_colors(ValkyrieModel::Vk99, &colors)?,
         _ => unreachable!("command was checked above"),
     }
     Ok(true)
@@ -1696,6 +1708,14 @@ fn print_keyrox_usage() {
          openrustygb set-keyrox-mode --confirm-persistent-write \
          <wave|const|breathe|heartrate|point|winnower|stars|spectrum|plumflower|shoot|ambilight-rotate|ripple> \
          <brightness-0-127> <speed-0-4> <left|right|up|down> <none|random|RRGGBB>"
+    );
+}
+
+fn print_valkyrie_usage() {
+    eprintln!(
+        "  openrustygb probe-valkyrie-vk99\n  \
+         openrustygb set-valkyrie-vk99-pro --confirm-reversible-write <98-RRGGBB-colors>\n  \
+         openrustygb set-valkyrie-vk99 --confirm-reversible-write <102-RRGGBB-colors>"
     );
 }
 
@@ -1880,6 +1900,31 @@ fn probe_keyrox() -> Result<(), Box<dyn Error>> {
         for (endpoint, model) in exact {
             println!(
                 "Found {model} endpoint: {:04X}:{:04X}, interface {}, usage {:04X}:{:04X}",
+                endpoint.vendor_id,
+                endpoint.product_id,
+                endpoint.interface_number,
+                endpoint.usage_page,
+                endpoint.usage
+            );
+        }
+    }
+    println!("Probe completed without opening a device or writing a report.");
+    Ok(())
+}
+
+fn probe_valkyrie() -> Result<(), Box<dyn Error>> {
+    let endpoints = HidInventory::enumerate()?;
+    let exact: Vec<_> = endpoints
+        .iter()
+        .filter_map(|endpoint| match_valkyrie(endpoint).map(|model| (endpoint, model)))
+        .collect();
+    if exact.is_empty() {
+        println!("No exact Valkyrie VK99 endpoint found.");
+    } else {
+        for (endpoint, model) in exact {
+            println!(
+                "Found {} endpoint: {:04X}:{:04X}, interface {}, usage {:04X}:{:04X}",
+                model.name(),
                 endpoint.vendor_id,
                 endpoint.product_id,
                 endpoint.interface_number,
@@ -3067,6 +3112,60 @@ fn set_keyrox(command: KeyroxCommand) -> Result<(), Box<dyn Error>> {
     } else {
         println!("Applied one reversible {model} Custom color transaction.");
     }
+    Ok(())
+}
+
+fn set_valkyrie_colors(
+    requested_model: ValkyrieModel,
+    colors: &[Rgb8],
+) -> Result<(), Box<dyn Error>> {
+    ValkyrieColorTransaction::new(requested_model, colors)?;
+    let endpoints = HidInventory::enumerate()?;
+    let mut exact = endpoints
+        .into_iter()
+        .filter(|endpoint| match_valkyrie(endpoint).is_some_and(|model| model == requested_model));
+    let endpoint = exact
+        .next()
+        .ok_or("exact requested Valkyrie VK99 endpoint not found")?;
+    if exact.next().is_some() {
+        return Err(
+            "more than one matching Valkyrie VK99 endpoint found; refusing to choose".into(),
+        );
+    }
+    let output =
+        HidOutput::<VALKYRIE_REPORT_LEN>::open_matching(&endpoint, requested_model.matcher())?;
+    let target = ControllerRef {
+        id: ControllerId::new(NonZeroU64::new(41).expect("forty-one is non-zero")),
+        incarnation: Incarnation::new(NonZeroU32::new(1).expect("one is non-zero")),
+    };
+    let actor = ControllerActor::start(
+        target,
+        ValkyrieBackend {
+            model: requested_model,
+            output,
+        },
+        4,
+    )?;
+    let outcome = actor
+        .submit_barrier(
+            target,
+            ValkyrieCommand {
+                colors: colors.to_vec(),
+            },
+        )?
+        .wait()?;
+    actor.shutdown()?;
+    match outcome {
+        CommandOutcome::Applied { .. } => {}
+        CommandOutcome::Failed { error, .. } => return Err(error.into()),
+        CommandOutcome::Superseded { .. } => {
+            return Err("Valkyrie color command was unexpectedly superseded".into());
+        }
+    }
+    println!(
+        "Applied one reversible {} per-key color transaction.",
+        requested_model.name()
+    );
     Ok(())
 }
 
@@ -4865,6 +4964,59 @@ impl ControllerBackend for DuckyBackend {
             .map_err(DuckyBackendError::Settings)?
             .apply(&mut self.output)
             .map_err(DuckyBackendError::Output)
+    }
+
+    fn shutdown(&mut self) -> Result<(), Self::Error> {
+        Ok(())
+    }
+}
+
+#[derive(Clone, Debug)]
+struct ValkyrieCommand {
+    colors: Vec<Rgb8>,
+}
+
+#[derive(Debug)]
+struct ValkyrieBackend {
+    model: ValkyrieModel,
+    output: HidOutput<VALKYRIE_REPORT_LEN>,
+}
+
+#[derive(Debug)]
+enum ValkyrieBackendError {
+    Colors(ValkyrieInvalidColorCount),
+    Output(HidTransportError),
+}
+
+impl fmt::Display for ValkyrieBackendError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Colors(error) => write!(f, "invalid Valkyrie color count: {error}"),
+            Self::Output(error) => {
+                write!(f, "could not communicate with Valkyrie keyboard: {error}")
+            }
+        }
+    }
+}
+
+impl Error for ValkyrieBackendError {}
+
+impl ControllerBackend for ValkyrieBackend {
+    type Barrier = ValkyrieCommand;
+    type Error = ValkyrieBackendError;
+
+    fn apply_whole_color(&mut self, color: Rgb8) -> Result<(), Self::Error> {
+        ValkyrieColorTransaction::new(self.model, &vec![color; self.model.led_count()])
+            .map_err(ValkyrieBackendError::Colors)?
+            .apply(&mut self.output)
+            .map_err(ValkyrieBackendError::Output)
+    }
+
+    fn apply_barrier(&mut self, command: Self::Barrier) -> Result<(), Self::Error> {
+        ValkyrieColorTransaction::new(self.model, &command.colors)
+            .map_err(ValkyrieBackendError::Colors)?
+            .apply(&mut self.output)
+            .map_err(ValkyrieBackendError::Output)
     }
 
     fn shutdown(&mut self) -> Result<(), Self::Error> {

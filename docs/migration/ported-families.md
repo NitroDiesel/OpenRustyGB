@@ -640,3 +640,20 @@ policy until a matching device completes its live test.
 Physical Red Square Keyrox hardware was not present for this contraction. The
 family remains release-blocked by the global hardware-evidence policy until a
 matching device completes its live test.
+
+## ValkyrieKeyboardController
+
+- Rust package: `openrustygb-driver-valkyrie-vk99`
+- Devices: Valkyrie VK99 Pro and Valkyrie VK99 keyboards
+- Match: VID `05AC`, PID `024F`, usage `FF13:0001`; interface `3` selects the 98-key Pro model and interface `2` selects the 102-key standard model
+- Preserved model: one matrix keyboard zone and Direct per-key color for both layouts
+- Preserved layouts: the original 6-by-22 matrices, standardized key labels, and model-specific 98-key and 102-key protocol code tables
+- Preserved output: 65-byte feature reports with report ID `00`; one `04 20` initialization write and feature read; seven 64-byte key-code/RGB data fragments; zero and `04 02` termination writes; a final feature read; 1 ms operation pacing and 33 ms final settling delay
+- Transport expansion: the Rust driver API and HID transport now expose a narrow feature-report reader that requires the caller to set the report ID and returns the accepted byte count
+- Safety correction: callers must provide the exact model-specific color count, every unused packet byte is zero, and endpoint selection distinguishes the two interfaces even though both models share a VID/PID
+- Verification: both exact interface matchers, lifecycle and fragmentation goldens, logical RGB and key-code placement checks, write/read ordering, invalid-count tests, both exact matrices and model descriptions, executable read-only probe, guarded model-specific commands, workspace Clippy and tests
+- Deleted native files: `ValkyrieKeyboardControllerDetect.cpp`, `ValkyrieKeyboardController.cpp`, `ValkyrieKeyboardController.h`, `RGBController_ValkyrieKeyboard.cpp`, `RGBController_ValkyrieKeyboard.h`
+
+Physical Valkyrie VK99 hardware was not present for this contraction. The
+family remains release-blocked by the global hardware-evidence policy until a
+matching device completes its live test.

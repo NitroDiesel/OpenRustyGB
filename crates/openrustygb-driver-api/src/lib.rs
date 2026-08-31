@@ -185,6 +185,18 @@ pub trait FeatureWriter<const N: usize> {
     fn send_feature_report(&mut self, report: &OutputReport<N>) -> Result<(), Self::Error>;
 }
 
+pub trait FeatureReader<const N: usize> {
+    type Error: std::error::Error + Send + Sync + 'static;
+
+    /// Reads one fixed-size HID feature report. The caller sets byte zero to
+    /// the report ID before invoking this method.
+    ///
+    /// # Errors
+    ///
+    /// Returns the transport's error when the feature-report read fails.
+    fn get_feature_report(&mut self, report: &mut [u8; N]) -> Result<usize, Self::Error>;
+}
+
 pub trait InputReader<const N: usize> {
     type Error: std::error::Error + Send + Sync + 'static;
 

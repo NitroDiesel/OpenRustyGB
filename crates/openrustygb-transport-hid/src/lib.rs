@@ -6,8 +6,8 @@ use std::sync::Arc;
 
 use hidapi::{HidApi, HidDevice};
 use openrustygb_driver_api::{
-    ExactHidMatch, FeatureWriter, HidDeviceMatch, HidEndpointInfo, InputReader, OutputReport,
-    OutputWriter, PendingInputReader,
+    ExactHidMatch, FeatureReader, FeatureWriter, HidDeviceMatch, HidEndpointInfo, InputReader,
+    OutputReport, OutputWriter, PendingInputReader,
 };
 
 #[derive(Debug)]
@@ -123,6 +123,14 @@ impl<const OPEN_N: usize, const REPORT_N: usize> FeatureWriter<REPORT_N> for Hid
         self.device
             .send_feature_report(report.as_bytes())
             .map_err(Into::into)
+    }
+}
+
+impl<const OPEN_N: usize, const REPORT_N: usize> FeatureReader<REPORT_N> for HidOutput<OPEN_N> {
+    type Error = HidTransportError;
+
+    fn get_feature_report(&mut self, report: &mut [u8; REPORT_N]) -> Result<usize, Self::Error> {
+        self.device.get_feature_report(report).map_err(Into::into)
     }
 }
 

@@ -41,14 +41,14 @@ editing prose alone.
 
 ## Verified state
 
-Snapshot: 2026-08-30, after the Red Square Keyrox migration.
+Snapshot: 2026-08-31, after the Valkyrie VK99 migration.
 
-- 40 of 197 pinned controller families are contracted to Rust.
-- 185 of 224 detector sources remain native; 39 detector sources have Rust
+- 41 of 197 pinned controller families are contracted to Rust.
+- 184 of 224 detector sources remain native; 40 detector sources have Rust
   owners.
-- 41 Rust driver packages exist. One package is the requested HyperX Pulsefire
+- 42 Rust driver packages exist. One package is the requested HyperX Pulsefire
   Haste 2 support that did not replace an upstream pinned family.
-- 1,905 C/C++/Objective-C source or header files and 48 native or Qt build
+- 1,900 C/C++/Objective-C source or header files and 48 native or Qt build
   descriptions remain.
 - The Rust-only source gate is intentionally blocked. There is no supported
   parity installer or release yet.
@@ -65,14 +65,16 @@ that list here.
 ## What has been built
 
 The repository has a working Rust workspace with domain values, driver
-capability traits, HID transport, controller actors, a CLI integration path,
+capability traits, HID transport with feature-report reads and writes,
+controller actors, a CLI integration path,
 family-owned driver packages, packet-level tests, and checked migration audits.
 Completed drivers preserve exact HID matching, layouts, mode metadata,
 validation, packet serialization, pacing, lifecycle messages, and guarded write
 paths appropriate to each upstream family.
 
 Recent contracted keyboard families include Skyloong GK104 Pro, Anne Pro 2,
-Ionico, XPG Summoner, Ducky, Thermaltake Poseidon Z RGB, and Red Square Keyrox.
+Ionico, XPG Summoner, Ducky, Thermaltake Poseidon Z RGB, Red Square Keyrox, and
+Valkyrie VK99.
 The ledger contains the complete set and verification evidence.
 
 HyperX Pulsefire Haste 2 support remains part of the product. Keep it presented
@@ -108,10 +110,10 @@ Use one owned family as the unit of contraction:
    the port ledger, rerun the audits, commit with Codex attribution when Codex
    authored material changes, push to `main`, and wait for cross-platform CI.
 
-Valkyrie keyboards were inspected but not contracted because their lifecycle
-requires HID feature-report reads and the current Rust transport exposes only
-feature writes. Add and verify a narrow feature-report reader before resuming
-that family. Its native files remain the behavior oracle until then.
+The Valkyrie migration added the narrow HID feature-report reader needed by
+controllers that pair feature writes with acknowledgements. Keep that API
+report-ID driven and use it only where the native protocol performs a feature
+read.
 
 ## Hardware safety
 

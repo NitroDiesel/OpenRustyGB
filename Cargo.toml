@@ -46,6 +46,7 @@ members = [
     "crates/drivers/ducky-keyboard",
     "crates/drivers/thermaltake-poseidon-z-rgb",
     "crates/drivers/red-square-keyrox",
+    "crates/drivers/valkyrie-vk99",
     "crates/openrustygb-app",
     "xtask",
 ]
