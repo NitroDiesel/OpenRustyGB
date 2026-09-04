@@ -86,6 +86,7 @@ name = "openrustygb"
 version = "0.0.1"
 dependencies = [
  "openrustygb-domain",
+ "openrustygb-driver-acer-nitro-hid",
  "openrustygb-driver-anne-pro-2",
  "openrustygb-driver-aoc-amm700-mousemat",
  "openrustygb-driver-aoc-gm500-mouse",
@@ -138,6 +139,14 @@ dependencies = [
 [[package]]
 name = "openrustygb-domain"
 version = "0.0.1"
+
+[[package]]
+name = "openrustygb-driver-acer-nitro-hid"
+version = "0.0.1"
+dependencies = [
+ "openrustygb-domain",
+ "openrustygb-driver-api",
+]
 
 [[package]]
 name = "openrustygb-driver-anne-pro-2"

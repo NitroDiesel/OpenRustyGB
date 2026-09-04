@@ -49,6 +49,7 @@ members = [
     "crates/drivers/valkyrie-vk99",
     "crates/drivers/msi-laptop",
     "crates/drivers/hp-omen-30l",
+    "crates/drivers/acer-nitro-hid",
     "crates/openrustygb-app",
     "xtask",
 ]

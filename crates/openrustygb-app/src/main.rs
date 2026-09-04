@@ -7,6 +7,11 @@ use std::num::{NonZeroU32, NonZeroU64};
 use std::path::Path;
 
 use openrustygb_domain::{ControllerId, ControllerRef, Incarnation, Rgb8};
+use openrustygb_driver_acer_nitro_hid::{
+    AcerDevice, AcerMode, Direction as AcerDirection, FEATURE_REPORT_LEN as ACER_REPORT_LEN,
+    InvalidSettings as AcerInvalidSettings, MATCH as ACER_MATCH,
+    ModeTransaction as AcerTransaction, matches as matches_acer,
+};
 use openrustygb_driver_anne_pro_2::{
     DirectColorTransaction as AnnePro2ColorTransaction,
     InvalidColorCount as AnnePro2InvalidColorCount, LED_COUNT as ANNE_PRO_2_LED_COUNT,
@@ -251,6 +256,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     print_valkyrie_usage();
     print_msi_laptop_usage();
     print_omen_usage();
+    print_acer_usage();
     Ok(())
 }
 
@@ -258,6 +264,7 @@ fn dispatch_probe(args: &[String]) -> Option<Result<(), Box<dyn Error>>> {
     match args {
         [] => Some(probe()),
         [command] if command == "probe-aoc-amm700" => Some(probe_aoc()),
+        [command] if command == "probe-acer-nitro-hid" => Some(probe_acer()),
         [command] if command == "probe-aoc-gm500" => Some(probe_aoc_mouse()),
         [command] if command == "probe-anne-pro-2" => Some(probe_anne_pro_2()),
         [command] if command == "probe-asus-monitor" => Some(probe_asus_monitor()),
@@ -1050,6 +1057,9 @@ fn dispatch_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
 }
 
 fn dispatch_structured_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
+    if dispatch_acer_write(args)? {
+        return Ok(true);
+    }
     if dispatch_omen_write(args)? {
         return Ok(true);
     }
@@ -1102,6 +1112,46 @@ fn dispatch_structured_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
         return Ok(true);
     }
     Ok(false)
+}
+
+fn dispatch_acer_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
+    match args {
+        [command, confirmation, device, brightness, colors @ ..]
+            if command == "set-acer-nitro-direct"
+                && confirmation == "--confirm-reversible-write" =>
+        {
+            set_acer(AcerCommand {
+                device: parse_acer_device(device)?,
+                mode: AcerMode::Direct,
+                brightness: parse_u8_decimal(brightness, "brightness")?,
+                speed: 0,
+                direction: AcerDirection::Left,
+                colors: parse_rgb_colors(colors)?,
+            })?;
+            Ok(true)
+        }
+        [
+            command,
+            confirmation,
+            device,
+            mode,
+            brightness,
+            speed,
+            direction,
+            colors @ ..,
+        ] if command == "set-acer-nitro-mode" && confirmation == "--confirm-persistent-write" => {
+            set_acer(AcerCommand {
+                device: parse_acer_device(device)?,
+                mode: parse_acer_mode(mode)?,
+                brightness: parse_u8_decimal(brightness, "brightness")?,
+                speed: parse_u8_decimal(speed, "speed")?,
+                direction: parse_acer_direction(direction)?,
+                colors: parse_rgb_colors(colors)?,
+            })?;
+            Ok(true)
+        }
+        _ => Ok(false),
+    }
 }
 
 fn dispatch_omen_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
@@ -1793,6 +1843,17 @@ fn print_omen_usage() {
     );
 }
 
+fn print_acer_usage() {
+    eprintln!(
+        "  openrustygb probe-acer-nitro-hid\n  \
+         openrustygb set-acer-nitro-direct --confirm-reversible-write \
+         <keyboard|led> <brightness-0-100> <profile-RRGGBB-colors>\n  \
+         openrustygb set-acer-nitro-mode --confirm-persistent-write \
+         <keyboard|led> <static|breathing|neon|wave|shifting|zoom|meteor|twinkling> \
+         <brightness-0-100> <speed> <left|right> <mode-colors>"
+    );
+}
+
 fn probe_msi() -> Result<(), Box<dyn Error>> {
     let endpoints = HidInventory::enumerate()?;
     let exact: Vec<_> = endpoints
@@ -2052,6 +2113,31 @@ fn probe_omen() -> Result<(), Box<dyn Error>> {
         for endpoint in exact {
             println!(
                 "Found HP Omen 30L endpoint: {:04X}:{:04X}, interface {}, usage {:04X}:{:04X}",
+                endpoint.vendor_id,
+                endpoint.product_id,
+                endpoint.interface_number,
+                endpoint.usage_page,
+                endpoint.usage
+            );
+        }
+    }
+    println!("Probe completed without opening a device or writing a report.");
+    Ok(())
+}
+
+fn probe_acer() -> Result<(), Box<dyn Error>> {
+    let endpoints = HidInventory::enumerate()?;
+    let exact: Vec<_> = endpoints
+        .iter()
+        .filter(|endpoint| matches_acer(endpoint))
+        .collect();
+    if exact.is_empty() {
+        println!("No exact Acer Nitro HID lighting endpoint found.");
+    } else {
+        for endpoint in exact {
+            println!(
+                "Found Acer Nitro HID endpoint for keyboard and chassis LED profiles: \
+                 {:04X}:{:04X}, interface {}, usage {:04X}:{:04X}",
                 endpoint.vendor_id,
                 endpoint.product_id,
                 endpoint.interface_number,
@@ -3408,6 +3494,56 @@ fn set_msi_laptop_colors(
         "Applied one reversible {} per-LED color transaction.",
         requested_device.name()
     );
+    Ok(())
+}
+
+fn set_acer(command: AcerCommand) -> Result<(), Box<dyn Error>> {
+    AcerTransaction::new(
+        command.device,
+        command.mode,
+        command.brightness,
+        command.speed,
+        command.direction,
+        &command.colors,
+    )?;
+    let endpoints = HidInventory::enumerate()?;
+    let mut exact = endpoints.into_iter().filter(matches_acer);
+    let endpoint = exact
+        .next()
+        .ok_or("exact Acer Nitro HID lighting endpoint not found")?;
+    if exact.next().is_some() {
+        return Err("more than one Acer Nitro HID endpoint found; refusing to choose".into());
+    }
+    let output = HidOutput::<ACER_REPORT_LEN>::open_matching(&endpoint, ACER_MATCH)?;
+    let target = ControllerRef {
+        id: ControllerId::new(NonZeroU64::new(44).expect("forty-four is non-zero")),
+        incarnation: Incarnation::new(NonZeroU32::new(1).expect("one is non-zero")),
+    };
+    let persistent = command.mode != AcerMode::Direct;
+    let device = command.device;
+    let mode = command.mode;
+    let actor = ControllerActor::start(target, AcerBackend { device, output }, 4)?;
+    let outcome = actor.submit_barrier(target, command)?.wait()?;
+    actor.shutdown()?;
+    match outcome {
+        CommandOutcome::Applied { .. } => {}
+        CommandOutcome::Failed { error, .. } => return Err(error.into()),
+        CommandOutcome::Superseded { .. } => {
+            return Err("Acer Nitro HID command was unexpectedly superseded".into());
+        }
+    }
+    if persistent {
+        println!(
+            "Applied one guarded {} {} transaction.",
+            device.name(),
+            mode.name()
+        );
+    } else {
+        println!(
+            "Applied one reversible {} Direct transaction.",
+            device.name()
+        );
+    }
     Ok(())
 }
 
@@ -5363,6 +5499,76 @@ impl ControllerBackend for MsiLaptopBackend {
 }
 
 #[derive(Clone, Debug)]
+struct AcerCommand {
+    device: AcerDevice,
+    mode: AcerMode,
+    brightness: u8,
+    speed: u8,
+    direction: AcerDirection,
+    colors: Vec<Rgb8>,
+}
+
+#[derive(Debug)]
+struct AcerBackend {
+    device: AcerDevice,
+    output: HidOutput<ACER_REPORT_LEN>,
+}
+
+#[derive(Debug)]
+enum AcerBackendError {
+    Settings(AcerInvalidSettings),
+    Output(HidTransportError),
+}
+
+impl fmt::Display for AcerBackendError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Settings(error) => write!(f, "invalid Acer Nitro HID settings: {error}"),
+            Self::Output(error) => write!(f, "could not communicate with Acer Nitro HID: {error}"),
+        }
+    }
+}
+
+impl Error for AcerBackendError {}
+
+impl ControllerBackend for AcerBackend {
+    type Barrier = AcerCommand;
+    type Error = AcerBackendError;
+
+    fn apply_whole_color(&mut self, color: Rgb8) -> Result<(), Self::Error> {
+        AcerTransaction::new(
+            self.device,
+            AcerMode::Direct,
+            100,
+            0,
+            AcerDirection::Left,
+            &vec![color; self.device.led_count()],
+        )
+        .map_err(AcerBackendError::Settings)?
+        .apply(&mut self.output)
+        .map_err(AcerBackendError::Output)
+    }
+
+    fn apply_barrier(&mut self, command: Self::Barrier) -> Result<(), Self::Error> {
+        AcerTransaction::new(
+            command.device,
+            command.mode,
+            command.brightness,
+            command.speed,
+            command.direction,
+            &command.colors,
+        )
+        .map_err(AcerBackendError::Settings)?
+        .apply(&mut self.output)
+        .map_err(AcerBackendError::Output)
+    }
+
+    fn shutdown(&mut self) -> Result<(), Self::Error> {
+        Ok(())
+    }
+}
+
+#[derive(Clone, Debug)]
 struct OmenCommand {
     mode: OmenMode,
     speed: u8,
@@ -6154,6 +6360,36 @@ fn parse_luxafor_pattern(input: &str) -> Result<LuxaforPattern, Box<dyn Error>> 
     }
 }
 
+fn parse_acer_device(input: &str) -> Result<AcerDevice, Box<dyn Error>> {
+    match input {
+        "keyboard" => Ok(AcerDevice::Keyboard),
+        "led" => Ok(AcerDevice::ChassisLed),
+        _ => Err("Acer Nitro HID profile must be keyboard or led".into()),
+    }
+}
+
+fn parse_acer_mode(input: &str) -> Result<AcerMode, Box<dyn Error>> {
+    match input {
+        "static" => Ok(AcerMode::Static),
+        "breathing" => Ok(AcerMode::Breathing),
+        "neon" => Ok(AcerMode::Neon),
+        "wave" => Ok(AcerMode::Wave),
+        "shifting" => Ok(AcerMode::Shifting),
+        "zoom" => Ok(AcerMode::Zoom),
+        "meteor" => Ok(AcerMode::Meteor),
+        "twinkling" => Ok(AcerMode::Twinkling),
+        _ => Err("unknown Acer Nitro HID mode".into()),
+    }
+}
+
+fn parse_acer_direction(input: &str) -> Result<AcerDirection, Box<dyn Error>> {
+    match input {
+        "left" => Ok(AcerDirection::Left),
+        "right" => Ok(AcerDirection::Right),
+        _ => Err("Acer Nitro HID direction must be left or right".into()),
+    }
+}
+
 fn parse_omen_mode(input: &str) -> Result<OmenMode, Box<dyn Error>> {
     match input {
         "static" => Ok(OmenMode::Static),
@@ -6430,6 +6666,15 @@ mod tests {
         );
         assert!(parse_omen_mode("direct").is_err());
         assert!(parse_omen_mode("Color Cycle").is_err());
+    }
+
+    #[test]
+    fn acer_profile_mode_and_direction_parsers_are_strict() {
+        assert_eq!(parse_acer_device("keyboard").unwrap(), AcerDevice::Keyboard);
+        assert_eq!(parse_acer_mode("twinkling").unwrap(), AcerMode::Twinkling);
+        assert_eq!(parse_acer_direction("right").unwrap(), AcerDirection::Right);
+        assert!(parse_acer_mode("direct").is_err());
+        assert!(parse_acer_device("chassis").is_err());
     }
 
     #[cfg(target_os = "windows")]

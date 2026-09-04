@@ -692,3 +692,21 @@ Physical supported MSI Raider A18 hardware was not present for this contraction.
 The read-only probe identified this test system as a Lenovo 82AX and opened no
 device. The family remains release-blocked by the global hardware-evidence
 policy until a matching device completes its live test.
+
+## AcerNitroHidKeyboardController
+
+- Rust package: `openrustygb-driver-acer-nitro-hid`
+- Logical devices: four-zone Acer Nitro HID keyboard and one-zone Acer Nitro chassis LED, both exposed by one shared endpoint
+- Match: VID `0CF2`, PID `5130`, usage `FF5A:0001`; the native detector does not constrain interface
+- Preserved modes: both profiles expose Direct, Static, Breathing, and Neon; the keyboard also exposes Wave, Shifting, Zoom, Meteor, and Twinkling
+- Preserved settings: brightness `0..100`; keyboard effect speed `1..9`; chassis LED effect speed `1..5`; left/right Wave direction; one mode-specific color for Static and Breathing
+- Preserved output: 11-byte `A4` feature reports; keyboard device ID `21`; chassis LED ID `65`; Direct uses one Static packet per logical zone with bit-select values; hardware modes use one all-zone `0F` packet
+- Safety boundary: Direct uses `--confirm-reversible-write`; Static and hardware effects use `--confirm-persistent-write` because they select a device-managed lighting mode
+- Safety correction: profile-specific modes, speeds, brightness, and color counts are validated; ambiguous endpoints are refused; unused report bytes are zero
+- Verification: exact usage matcher negatives, keyboard per-zone Direct goldens, both device IDs, all-zone effect packets, profile range and mode checks, transport ordering, strict CLI parsers, executable read-only probe, guarded commands, workspace Clippy and tests
+- Deleted native files: `AcerHidKeyboardControllerDetect.cpp`, `AcerNitroHidKeyboardController.cpp`, `AcerNitroHidKeyboardController.h`, `RGBController_AcerNitroHidKeyboard.cpp`, `RGBController_AcerNitroHidKeyboard.h`, `RGBController_AcerNitroHidLed.cpp`, `RGBController_AcerNitroHidLed.h`
+
+Physical Acer Nitro HID hardware was not present for this contraction. The
+read-only probe found no matching endpoint and opened no device. The family
+remains release-blocked by the global hardware-evidence policy until a matching
+device completes its live test.

@@ -178,10 +178,13 @@ pub struct ModeDescription {
     pub brightness: Option<BrightnessRange>,
 }
 
+#[repr(u8)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ModeColorMode {
-    None,
-    PerLed,
+    None = 0,
+    PerLed = 1,
+    ModeSpecific = 2,
+    Random = 3,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -208,6 +211,14 @@ mod tests {
         assert_eq!(DeviceType::Mouse as i32, 6);
         assert_eq!(DeviceType::Monitor as i32, 20);
         assert_eq!(DeviceType::Unknown as i32, 21);
+    }
+
+    #[test]
+    fn pinned_mode_color_discriminants_match_openrgb() {
+        assert_eq!(ModeColorMode::None as u8, 0);
+        assert_eq!(ModeColorMode::PerLed as u8, 1);
+        assert_eq!(ModeColorMode::ModeSpecific as u8, 2);
+        assert_eq!(ModeColorMode::Random as u8, 3);
     }
 
     #[test]
