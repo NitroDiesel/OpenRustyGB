@@ -50,6 +50,7 @@ members = [
     "crates/drivers/msi-laptop",
     "crates/drivers/hp-omen-30l",
     "crates/drivers/acer-nitro-hid",
+    "crates/drivers/aoc-keyboard",
     "crates/openrustygb-app",
     "xtask",
 ]

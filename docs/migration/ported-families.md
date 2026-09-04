@@ -710,3 +710,24 @@ Physical Acer Nitro HID hardware was not present for this contraction. The
 read-only probe found no matching endpoint and opened no device. The family
 remains release-blocked by the global hardware-evidence policy until a matching
 device completes its live test.
+
+## AOCKeyboardController
+
+- Rust package: `openrustygb-driver-aoc-keyboard`
+- Device: AOC GK500 full-size keyboard, covering native PIDs `1178` and `1229`
+- Match: VID `3938`, usage page `FF19`, usage `FF19`; the native detector does not constrain interface
+- Preserved layout: 104 logical ANSI full-size keys mapped through the pinned Keyboard Layout Manager values into the device's 120 physical RGB slots; unreferenced slots remain zero
+- Preserved modes: Static, Spectrum Cycle, Breathing, React, Ripple, Radar, Fireworks, Flashing, Wave, Rainbow Wave, Concentric Circles, W Wave, and Direct
+- Preserved settings: brightness `0..3`; effect speed uses the native inverted raw range `3..1` with default `2`; mode-specific and random colors remain distinct; Radar, Wave, Rainbow Wave, and Concentric Circles preserve left/right direction
+- Preserved direction mapping: OpenRGB Left serializes as device counter-clockwise `01`; OpenRGB Right serializes as clockwise `00`, including the native Left default for non-directional mode packets
+- Preserved output: 64-byte `09 21` start and `09 22` end output reports; 117-byte `14 01` hardware-mode feature report with mode-indexed settings and the `4A9E` additive checksum; 361-byte `20` custom feature report with separate 120-byte red, green, and blue planes
+- Preserved pacing: hardware modes use 5 ms after start, 5 ms after configuration, and 10 ms after end; Direct uses 5 ms at all three boundaries
+- Direct brightness parity: OpenRGB exposes brightness on Direct, but the native custom packet has no brightness field; Rust validates `0..3` while preserving the packet exactly
+- Safety boundary: Direct uses `--confirm-reversible-write`; hardware-effect selection uses `--confirm-persistent-write`; all settings and the exact 104-color Direct count are validated before opening hardware, and ambiguous endpoint matches are refused
+- Verification: both native PID matcher positives plus usage negatives, exact mode offsets/checksum/random/speed/direction goldens, logical-to-physical RGB plane mapping, unused-slot zeros, exact start/feature/end dispatch, short-output rejection, 104-key matrix coverage, mode metadata, strict CLI parsers, executable read-only probe, focused Clippy and tests
+- Deleted native files: `AOCKeyboardControllerDetect.cpp`, `AOCKeyboardController.cpp`, `AOCKeyboardController.h`, `RGBController_AOCKeyboard.cpp`, `RGBController_AOCKeyboard.h`
+
+Physical AOC GK500 hardware was not present for this contraction. The read-only
+probe found no matching endpoint and opened no device. The family remains
+release-blocked by the global hardware-evidence policy until a matching device
+completes its live test.

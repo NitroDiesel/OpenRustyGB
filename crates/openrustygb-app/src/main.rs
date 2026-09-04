@@ -27,6 +27,13 @@ use openrustygb_driver_aoc_gm500_mouse::{
     InvalidSettings as AocMouseInvalidSettings, MATCH as AOC_MOUSE_MATCH,
     ModeTransaction as AocMouseModeTransaction, matches as matches_aoc_mouse,
 };
+use openrustygb_driver_aoc_keyboard::{
+    AocKeyboardMode, ApplyError as AocKeyboardApplyError,
+    DirectTransaction as AocKeyboardDirectTransaction, Direction as AocKeyboardDirection,
+    InvalidSettings as AocKeyboardInvalidSettings, LED_COUNT as AOC_KEYBOARD_LED_COUNT,
+    ModeTransaction as AocKeyboardModeTransaction,
+    OUTPUT_REPORT_LEN as AOC_KEYBOARD_OUTPUT_REPORT_LEN, match_model as match_aoc_keyboard,
+};
 use openrustygb_driver_api::{ExactWriteError, PrefixTooLong};
 use openrustygb_driver_areson_mice::{
     AresonMode, FEATURE_REPORT_LEN as ARESON_REPORT_LEN, InvalidSettings as AresonInvalidSettings,
@@ -257,12 +264,14 @@ fn main() -> Result<(), Box<dyn Error>> {
     print_msi_laptop_usage();
     print_omen_usage();
     print_acer_usage();
+    print_aoc_keyboard_usage();
     Ok(())
 }
 
 fn dispatch_probe(args: &[String]) -> Option<Result<(), Box<dyn Error>>> {
     match args {
         [] => Some(probe()),
+        [command] if command == "probe-aoc-keyboard" => Some(probe_aoc_keyboard()),
         [command] if command == "probe-aoc-amm700" => Some(probe_aoc()),
         [command] if command == "probe-acer-nitro-hid" => Some(probe_acer()),
         [command] if command == "probe-aoc-gm500" => Some(probe_aoc_mouse()),
@@ -1057,6 +1066,9 @@ fn dispatch_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
 }
 
 fn dispatch_structured_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
+    if dispatch_aoc_keyboard_write(args)? {
+        return Ok(true);
+    }
     if dispatch_acer_write(args)? {
         return Ok(true);
     }
@@ -1112,6 +1124,42 @@ fn dispatch_structured_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
         return Ok(true);
     }
     Ok(false)
+}
+
+fn dispatch_aoc_keyboard_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
+    match args {
+        [command, confirmation, brightness, colors @ ..]
+            if command == "set-aoc-keyboard-direct"
+                && confirmation == "--confirm-reversible-write" =>
+        {
+            set_aoc_keyboard(AocKeyboardCommand::Direct {
+                brightness: parse_u8_decimal(brightness, "brightness")?,
+                colors: parse_rgb_colors(colors)?,
+            })?;
+            Ok(true)
+        }
+        [
+            command,
+            confirmation,
+            mode,
+            brightness,
+            speed,
+            direction,
+            color,
+        ] if command == "set-aoc-keyboard-mode" && confirmation == "--confirm-persistent-write" => {
+            let (random, color) = parse_aoc_keyboard_color(color)?;
+            set_aoc_keyboard(AocKeyboardCommand::Mode {
+                mode: parse_aoc_keyboard_mode(mode)?,
+                brightness: parse_u8_decimal(brightness, "brightness")?,
+                speed: parse_u8_decimal(speed, "speed")?,
+                direction: parse_aoc_keyboard_direction(direction)?,
+                random,
+                color,
+            })?;
+            Ok(true)
+        }
+        _ => Ok(false),
+    }
 }
 
 fn dispatch_acer_write(args: &[String]) -> Result<bool, Box<dyn Error>> {
@@ -1854,6 +1902,17 @@ fn print_acer_usage() {
     );
 }
 
+fn print_aoc_keyboard_usage() {
+    eprintln!(
+        "  openrustygb probe-aoc-keyboard\n  \
+         openrustygb set-aoc-keyboard-direct --confirm-reversible-write \
+         <brightness-0-3> <104-RRGGBB-colors>\n  \
+         openrustygb set-aoc-keyboard-mode --confirm-persistent-write \
+         <static|spectrum-cycle|breathing|react|ripple|radar|fireworks|flashing|wave|rainbow-wave|concentric-circles|w-wave> \
+         <brightness-0-3> <speed-0-or-1-3> <left|right> <random|RRGGBB>"
+    );
+}
+
 fn probe_msi() -> Result<(), Box<dyn Error>> {
     let endpoints = HidInventory::enumerate()?;
     let exact: Vec<_> = endpoints
@@ -2138,6 +2197,31 @@ fn probe_acer() -> Result<(), Box<dyn Error>> {
             println!(
                 "Found Acer Nitro HID endpoint for keyboard and chassis LED profiles: \
                  {:04X}:{:04X}, interface {}, usage {:04X}:{:04X}",
+                endpoint.vendor_id,
+                endpoint.product_id,
+                endpoint.interface_number,
+                endpoint.usage_page,
+                endpoint.usage
+            );
+        }
+    }
+    println!("Probe completed without opening a device or writing a report.");
+    Ok(())
+}
+
+fn probe_aoc_keyboard() -> Result<(), Box<dyn Error>> {
+    let endpoints = HidInventory::enumerate()?;
+    let exact: Vec<_> = endpoints
+        .iter()
+        .filter_map(|endpoint| match_aoc_keyboard(endpoint).map(|model| (endpoint, model)))
+        .collect();
+    if exact.is_empty() {
+        println!("No exact AOC GK500 keyboard lighting endpoint found.");
+    } else {
+        for (endpoint, model) in exact {
+            println!(
+                "Found {} endpoint: {:04X}:{:04X}, interface {}, usage {:04X}:{:04X}",
+                model.name,
                 endpoint.vendor_id,
                 endpoint.product_id,
                 endpoint.interface_number,
@@ -3494,6 +3578,65 @@ fn set_msi_laptop_colors(
         "Applied one reversible {} per-LED color transaction.",
         requested_device.name()
     );
+    Ok(())
+}
+
+fn set_aoc_keyboard(command: AocKeyboardCommand) -> Result<(), Box<dyn Error>> {
+    match &command {
+        AocKeyboardCommand::Direct { brightness, colors } => {
+            AocKeyboardDirectTransaction::new(*brightness, colors)?;
+        }
+        AocKeyboardCommand::Mode {
+            mode,
+            brightness,
+            speed,
+            direction,
+            random,
+            color,
+        } => {
+            AocKeyboardModeTransaction::new(
+                *mode,
+                *brightness,
+                *speed,
+                *direction,
+                *random,
+                *color,
+            )?;
+        }
+    }
+
+    let endpoints = HidInventory::enumerate()?;
+    let mut exact = endpoints
+        .into_iter()
+        .filter_map(|endpoint| match_aoc_keyboard(&endpoint).map(|model| (endpoint, model)));
+    let (endpoint, model) = exact
+        .next()
+        .ok_or("exact AOC GK500 keyboard lighting endpoint not found")?;
+    if exact.next().is_some() {
+        return Err("more than one AOC GK500 keyboard endpoint found; refusing to choose".into());
+    }
+    let output =
+        HidOutput::<AOC_KEYBOARD_OUTPUT_REPORT_LEN>::open_matching(&endpoint, model.matcher)?;
+    let target = ControllerRef {
+        id: ControllerId::new(NonZeroU64::new(45).expect("forty-five is non-zero")),
+        incarnation: Incarnation::new(NonZeroU32::new(1).expect("one is non-zero")),
+    };
+    let persistent = matches!(command, AocKeyboardCommand::Mode { .. });
+    let actor = ControllerActor::start(target, AocKeyboardBackend { output }, 4)?;
+    let outcome = actor.submit_barrier(target, command)?.wait()?;
+    actor.shutdown()?;
+    match outcome {
+        CommandOutcome::Applied { .. } => {}
+        CommandOutcome::Failed { error, .. } => return Err(error.into()),
+        CommandOutcome::Superseded { .. } => {
+            return Err("AOC GK500 keyboard command was unexpectedly superseded".into());
+        }
+    }
+    if persistent {
+        println!("Applied one guarded AOC GK500 hardware-mode transaction.");
+    } else {
+        println!("Applied one reversible AOC GK500 Direct transaction.");
+    }
     Ok(())
 }
 
@@ -5499,6 +5642,82 @@ impl ControllerBackend for MsiLaptopBackend {
 }
 
 #[derive(Clone, Debug)]
+enum AocKeyboardCommand {
+    Direct {
+        brightness: u8,
+        colors: Vec<Rgb8>,
+    },
+    Mode {
+        mode: AocKeyboardMode,
+        brightness: u8,
+        speed: u8,
+        direction: AocKeyboardDirection,
+        random: bool,
+        color: Rgb8,
+    },
+}
+
+#[derive(Debug)]
+struct AocKeyboardBackend {
+    output: HidOutput<AOC_KEYBOARD_OUTPUT_REPORT_LEN>,
+}
+
+#[derive(Debug)]
+enum AocKeyboardBackendError {
+    Settings(AocKeyboardInvalidSettings),
+    Output(AocKeyboardApplyError<HidTransportError>),
+}
+
+impl fmt::Display for AocKeyboardBackendError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Settings(error) => write!(f, "invalid AOC GK500 settings: {error}"),
+            Self::Output(error) => write!(f, "could not communicate with AOC GK500: {error}"),
+        }
+    }
+}
+
+impl Error for AocKeyboardBackendError {}
+
+impl ControllerBackend for AocKeyboardBackend {
+    type Barrier = AocKeyboardCommand;
+    type Error = AocKeyboardBackendError;
+
+    fn apply_whole_color(&mut self, color: Rgb8) -> Result<(), Self::Error> {
+        AocKeyboardDirectTransaction::new(3, &vec![color; AOC_KEYBOARD_LED_COUNT])
+            .map_err(AocKeyboardBackendError::Settings)?
+            .apply(&mut self.output)
+            .map_err(AocKeyboardBackendError::Output)
+    }
+
+    fn apply_barrier(&mut self, command: Self::Barrier) -> Result<(), Self::Error> {
+        match command {
+            AocKeyboardCommand::Direct { brightness, colors } => {
+                AocKeyboardDirectTransaction::new(brightness, &colors)
+                    .map_err(AocKeyboardBackendError::Settings)?
+                    .apply(&mut self.output)
+                    .map_err(AocKeyboardBackendError::Output)
+            }
+            AocKeyboardCommand::Mode {
+                mode,
+                brightness,
+                speed,
+                direction,
+                random,
+                color,
+            } => AocKeyboardModeTransaction::new(mode, brightness, speed, direction, random, color)
+                .map_err(AocKeyboardBackendError::Settings)?
+                .apply(&mut self.output)
+                .map_err(AocKeyboardBackendError::Output),
+        }
+    }
+
+    fn shutdown(&mut self) -> Result<(), Self::Error> {
+        Ok(())
+    }
+}
+
+#[derive(Clone, Debug)]
 struct AcerCommand {
     device: AcerDevice,
     mode: AcerMode,
@@ -6226,6 +6445,40 @@ fn parse_rgb_colors(inputs: &[String]) -> Result<Vec<Rgb8>, Box<dyn Error>> {
     inputs.iter().map(|input| parse_rgb(input)).collect()
 }
 
+fn parse_aoc_keyboard_mode(input: &str) -> Result<AocKeyboardMode, Box<dyn Error>> {
+    match input {
+        "static" => Ok(AocKeyboardMode::Static),
+        "spectrum-cycle" => Ok(AocKeyboardMode::SpectrumCycle),
+        "breathing" => Ok(AocKeyboardMode::Breathing),
+        "react" => Ok(AocKeyboardMode::React),
+        "ripple" => Ok(AocKeyboardMode::Ripple),
+        "radar" => Ok(AocKeyboardMode::Radar),
+        "fireworks" => Ok(AocKeyboardMode::Fireworks),
+        "flashing" => Ok(AocKeyboardMode::Flashing),
+        "wave" => Ok(AocKeyboardMode::Wave),
+        "rainbow-wave" => Ok(AocKeyboardMode::RainbowWave),
+        "concentric-circles" => Ok(AocKeyboardMode::ConcentricCircles),
+        "w-wave" => Ok(AocKeyboardMode::WWave),
+        _ => Err("unknown AOC GK500 hardware mode".into()),
+    }
+}
+
+fn parse_aoc_keyboard_direction(input: &str) -> Result<AocKeyboardDirection, Box<dyn Error>> {
+    match input {
+        "left" => Ok(AocKeyboardDirection::Left),
+        "right" => Ok(AocKeyboardDirection::Right),
+        _ => Err("AOC GK500 direction must be left or right".into()),
+    }
+}
+
+fn parse_aoc_keyboard_color(input: &str) -> Result<(bool, Rgb8), Box<dyn Error>> {
+    if input == "random" {
+        Ok((true, Rgb8::BLACK))
+    } else {
+        Ok((false, parse_rgb(input)?))
+    }
+}
+
 fn parse_ionico_model(input: &str) -> Result<IonicoModel, Box<dyn Error>> {
     match input {
         "keyboard" => Ok(IonicoModel::Keyboard),
@@ -6675,6 +6928,28 @@ mod tests {
         assert_eq!(parse_acer_direction("right").unwrap(), AcerDirection::Right);
         assert!(parse_acer_mode("direct").is_err());
         assert!(parse_acer_device("chassis").is_err());
+    }
+
+    #[test]
+    fn aoc_keyboard_mode_direction_and_color_parsers_are_strict() {
+        assert_eq!(
+            parse_aoc_keyboard_mode("concentric-circles").unwrap(),
+            AocKeyboardMode::ConcentricCircles
+        );
+        assert_eq!(
+            parse_aoc_keyboard_direction("right").unwrap(),
+            AocKeyboardDirection::Right
+        );
+        assert_eq!(
+            parse_aoc_keyboard_color("random").unwrap(),
+            (true, Rgb8::BLACK)
+        );
+        assert_eq!(
+            parse_aoc_keyboard_color("1234AB").unwrap(),
+            (false, Rgb8::new(0x12, 0x34, 0xAB))
+        );
+        assert!(parse_aoc_keyboard_mode("direct").is_err());
+        assert!(parse_aoc_keyboard_direction("cw").is_err());
     }
 
     #[cfg(target_os = "windows")]
